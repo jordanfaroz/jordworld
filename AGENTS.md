@@ -16,5 +16,22 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
   changed without your intent.
 - **Customised UI files that must never be replaced by a registry version**
   (update this list whenever a `src/components/ui` component is hand-edited):
-  - _(none yet — Phase 0 only ran `shadcn init`, which hasn't customised
-    `button.tsx` beyond the registry default)_
+  - `src/components/ui/badge.tsx` — chunky 2px border, squared radius, and the
+    `live`/`in-dev`/`coming-soon` status-pill variants (C11)
+  - `src/components/ui/card.tsx` — chunky 2px border, squared radius
+  - `src/components/ui/bento-grid.tsx` — rewritten: optional `href`/`cta` (a
+    purely informational card has neither), token colors instead of
+    hardcoded neutrals, `lucide-react` icon instead of `@radix-ui/react-icons`,
+    dense packing (`grid-flow-row-dense`) by default
+  - `src/components/ui/timeline.tsx` — rewritten: removed the hardcoded
+    light/dark palette and Aceternity's own placeholder copy, `heading`/
+    `subheading` are now props, grass/cyan gradient instead of purple/blue
+  - `src/components/ui/dot-pattern.tsx` — token color instead of a hardcoded
+    neutral; `Math.random()` replaced with a deterministic `pseudoRandom()`
+    (the React Compiler's purity rule forbids impure calls during render,
+    `useMemo` does not exempt it — the compute still runs in the render phase)
+  - `src/components/ui/shimmer-button.tsx` — squared default `borderRadius`
+    and a `--primary`-based default `background`, matching the pixel-game
+    aesthetic instead of the registry's pill-shaped black default
+  - `src/components/motion-primitives/spotlight.tsx` — cyan gradient instead
+    of the registry's zinc/white glow (C3 spec calls for cyan specifically)

@@ -1,2 +1,2 @@
-// Classic portfolio view (SEO/recruiter/accessible path) — built out in Phase 1.
-export {};
+export * from "./classic-view";
+export * from "./contact-section";

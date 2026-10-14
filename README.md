@@ -31,12 +31,23 @@ src/
 
 ## Phase roadmap
 
-- **Phase 0** — project setup (this commit): Next.js, TypeScript, Tailwind v4,
-  and shadcn/ui, plus fonts/tokens, folder scaffolding, and tooling.
-- **Phase 1** — content model (`src/content/`) + the classic portfolio view.
+- **Phase 0** — project setup: Next.js, TypeScript, Tailwind v4, and
+  shadcn/ui, plus fonts/tokens, folder scaffolding, and tooling.
+- **Phase 1** — content model (`src/content/`) + the classic portfolio view,
+  rendered at both `/` and `/classic` until Phase 2 builds the world.
 - **Phase 2** — the voxel world: island, camera, movement, content-driven
   region/project placement.
 - **Phase 3** — HUD, panels, and the "Enter World" intro.
+
+## UI libraries
+
+Beyond shadcn/ui (MIT): [motion-primitives](https://motion-primitives.com)
+(TextRoll, Tilt, Spotlight — MIT), [Aceternity UI](https://ui.aceternity.com)
+(Timeline — free component, not one of their paid blocks), and
+[Magic UI](https://magicui.design) (Bento Grid, Dot Pattern, Shimmer Button —
+MIT). Several of these were restyled after install to match our tokens —
+see the "Customised UI files" list in `AGENTS.md` before overwriting one via
+`shadcn add`.
 
 ## Visual identity
 
