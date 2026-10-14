@@ -40,8 +40,8 @@ export const projects: Project[] = [
     region: "lab",
     status: "live",
     url: "https://crucible.jordworld.com",
-    deployed: false,
-    // TODO(jordan): repo URL
+    deployed: true,
+    repo: "https://github.com/jordanfaroz/crucible-sandbox",
     tech: ["TypeScript", "Three.js"],
     featured: true,
   },
@@ -70,8 +70,8 @@ export const projects: Project[] = [
     region: "workshop",
     status: "live",
     url: "https://resume.jordworld.com",
-    deployed: false,
-    // TODO(jordan): repo URL
+    deployed: true,
+    repo: "https://github.com/jordanfaroz/orbital-timeline",
     // TODO(jordan): tech stack — WebGL shader confirmed, rest unconfirmed
     tech: [],
     featured: false,
