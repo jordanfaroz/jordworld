@@ -7,6 +7,21 @@ import {
   Transition,
 } from "motion/react";
 
+// `.split("")` splits by UTF-16 code unit, which breaks a surrogate-pair
+// emoji into two lone surrogates (mojibake). Intl.Segmenter splits by actual
+// grapheme cluster (correct for emoji with ZWJ/variation selectors too);
+// Array.from is the fallback for environments without it — code-point aware,
+// so still correct for plain surrogate-pair emoji even if not every cluster.
+function splitGraphemes(text: string): string[] {
+  if (typeof Intl !== "undefined" && "Segmenter" in Intl) {
+    const segmenter = new Intl.Segmenter(undefined, {
+      granularity: "grapheme",
+    });
+    return Array.from(segmenter.segment(text), (s) => s.segment);
+  }
+  return Array.from(text);
+}
+
 export type TextRollProps = {
   children: string;
   duration?: number;
@@ -48,7 +63,7 @@ export function TextRoll({
     },
   } as const;
 
-  const letters = children.split("");
+  const letters = splitGraphemes(children);
 
   return (
     <span className={className}>

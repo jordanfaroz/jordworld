@@ -35,3 +35,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
     aesthetic instead of the registry's pill-shaped black default
   - `src/components/motion-primitives/spotlight.tsx` — cyan gradient instead
     of the registry's zinc/white glow (C3 spec calls for cyan specifically)
+  - `src/components/motion-primitives/text-roll.tsx` — splits by grapheme
+    cluster (`Intl.Segmenter`, with an `Array.from` fallback) instead of the
+    registry's `.split("")`, which breaks surrogate-pair emoji into mojibake
+    by splitting on UTF-16 code units

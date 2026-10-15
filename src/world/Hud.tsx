@@ -54,15 +54,10 @@ export function Hud({
       {bannerRegion && (
         <div className="border-border bg-background/90 absolute top-16 left-1/2 -translate-x-1/2 rounded-md border-2 px-4 py-2 text-center backdrop-blur-sm">
           <span className="font-heading text-foreground text-lg">
-            {/* The emoji stays outside TextRoll: it splits by UTF-16 code
-                unit, which breaks a surrogate-pair emoji into two lone
-                surrogates (rendered as mojibake) instead of treating it as
-                one character. */}
-            <span>{regionInfo.emoji}</span>{" "}
             {reducedMotion ? (
-              regionInfo.label
+              `${regionInfo.emoji} ${regionInfo.label}`
             ) : (
-              <TextRoll>{regionInfo.label}</TextRoll>
+              <TextRoll>{`${regionInfo.emoji} ${regionInfo.label}`}</TextRoll>
             )}
           </span>
         </div>
