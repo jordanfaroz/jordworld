@@ -10,7 +10,7 @@ const TILE_COLOR: Record<Tile, string> = {
   grass: WORLD_COLORS.grass,
   path: WORLD_COLORS.path,
   plaza: WORLD_COLORS.plaza,
-  building: WORLD_COLORS.plaza, // ground under a building — the building mesh sits on top
+  building: WORLD_COLORS.plaza, // ground under a building, or Park's pond clearing
 };
 
 const TILE_TYPES: Tile[] = [

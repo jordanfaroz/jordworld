@@ -18,9 +18,11 @@ export interface HobbyPlacement {
   z: number;
 }
 
-/** Up to 8 slots in a 4-wide, 2-deep grid on the building's door-facing
- * side — adding a project to projects.ts makes it appear here automatically,
- * nothing in the world needs to change. */
+/** Up to 8 slots in a 4-wide, 2-deep grid, rowed out along the anchor's
+ * facing direction (the building's door for Lab/Arcade/Workshop, or just
+ * Park's camera-facing layout axis — it has no building) — adding a project
+ * to projects.ts makes it appear here automatically, nothing in the world
+ * needs to change. */
 function slotPositions(
   anchor: RegionAnchor,
   count: number,

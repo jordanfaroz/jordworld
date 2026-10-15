@@ -14,15 +14,15 @@
  *
  * Every building's door should be on a camera-visible face — for this camera
  * that's only ever +x or +z (the +y top is also visible but irrelevant to a
- * door). Three of the four regions have an unambiguous choice (their
- * plaza-ward direction has a positive x or z component); Park sits at the
- * near corner (+x,+z from the plaza, the same side as the camera itself),
- * where *both* plaza-ward axes point away from the camera — there is no
- * rotation-free placement that satisfies "faces the plaza" and "visible to
- * the camera" at once for that corner. We pick +z for it anyway (consistent
- * with Lab/Arcade) and connect its road to that face; the door still opens
- * onto the shared road network leading to the plaza, just not a perfectly
- * straight sightline to the plaza's centre point.
+ * door). Lab, Arcade and Workshop each have an unambiguous choice (their
+ * plaza-ward direction has a positive x or z component).
+ *
+ * Park is different: it's an open clearing (pond, benches, lamps), not a
+ * building, so there's no door to orient. Its `doorFacing` is reused purely
+ * as a layout axis — the same tangent/forward math that rows out pedestals
+ * in `content-placement.ts` also rows out Park's hobby props and points them
+ * toward the camera-visible +z side, so they read clearly instead of being
+ * scattered. +z also keeps Park's road approach consistent with Lab/Arcade.
  */
 
 export const GRID_SIZE = 48;
@@ -37,7 +37,11 @@ export interface RegionAnchor {
   /** Tile-space centre of the building footprint. */
   x: number;
   z: number;
-  /** Outward normal of the door/sign face, in tile units. */
+  /**
+   * Outward normal of the door/sign face, in tile units. For Park — which
+   * has no building — this is just the layout axis its props and road
+   * approach face, not a literal door.
+   */
   doorFacing: { x: number; z: number };
 }
 
@@ -73,7 +77,9 @@ export interface MapData {
   decorations: { x: number; z: number; kind: "tree" | "rock" | "flower" }[];
 }
 
-function doorTile(anchor: RegionAnchor) {
+/** Where the road from the plaza meets a region: the literal door for
+ * Lab/Arcade/Workshop, or just the clearing's edge for Park (no door). */
+function approachTile(anchor: RegionAnchor) {
   return {
     x: anchor.x + anchor.doorFacing.x * (BUILDING_HALF_SIZE + 1),
     z: anchor.z + anchor.doorFacing.z * (BUILDING_HALF_SIZE + 1),
@@ -131,7 +137,9 @@ export function generateMap(seed = 1337): MapData {
     }
   }
 
-  // Building footprints.
+  // Footprints: a 4x4 unwalkable block per region. For Lab/Arcade/Workshop
+  // this is the building; for Park (no building) it's the pond clearing —
+  // same blocking rules apply either way, it's just not a structure there.
   for (const anchor of REGION_ANCHORS) {
     for (
       let x = anchor.x - BUILDING_HALF_SIZE;
@@ -148,10 +156,10 @@ export function generateMap(seed = 1337): MapData {
     }
   }
 
-  // L-shaped roads from the plaza edge to each building's door.
+  // L-shaped roads from the plaza edge to each region's approach tile.
   for (const anchor of REGION_ANCHORS) {
-    const door = doorTile(anchor);
-    carveLPath(tiles, { x: PLAZA_CENTER.x, z: PLAZA_CENTER.z }, door);
+    const approach = approachTile(anchor);
+    carveLPath(tiles, { x: PLAZA_CENTER.x, z: PLAZA_CENTER.z }, approach);
   }
 
   // Decorations: scattered on plain grass only (never path/plaza/building/shore).
