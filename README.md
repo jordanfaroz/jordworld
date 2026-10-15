@@ -35,9 +35,13 @@ src/
   shadcn/ui, plus fonts/tokens, folder scaffolding, and tooling.
 - **Phase 1** — content model (`src/content/`) + the classic portfolio view,
   rendered at both `/` and `/classic` until Phase 2 builds the world.
-- **Phase 2** — the voxel world: island, camera, movement, content-driven
-  region/project placement.
-- **Phase 3** — HUD, panels, and the "Enter World" intro.
+- **Phase 2** (`world` branch) — the voxel world: deterministic island
+  (`src/world/map.ts`), isometric camera, WASD + click/tap-to-move (A\*
+  pathfinding), proximity interaction with floating prompts, and Sheet
+  panels for projects/hobbies/fast-travel/contact — all content-driven from
+  `src/content/`, nothing hardcoded per-project.
+- **Phase 3** — minimap, bottom-sheet panels on mobile, and the "Enter World"
+  paper-tear intro.
 
 ## UI libraries
 

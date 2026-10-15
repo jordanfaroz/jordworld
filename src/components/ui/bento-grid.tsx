@@ -1,4 +1,8 @@
-import { type ComponentPropsWithoutRef, type ReactNode } from "react";
+import {
+  type ComponentPropsWithoutRef,
+  type ComponentType,
+  type ReactNode,
+} from "react";
 import { ArrowRight } from "lucide-react";
 
 import { cn } from "@/lib/utils";
@@ -12,7 +16,7 @@ interface BentoCardProps extends ComponentPropsWithoutRef<"div"> {
   name: string;
   className: string;
   background?: ReactNode;
-  Icon: React.ElementType;
+  Icon: ComponentType<{ className?: string }>;
   description: string;
   /** Omit for a purely informational card with no click-through. */
   href?: string;

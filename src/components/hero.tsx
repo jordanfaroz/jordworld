@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 
 import { TextRoll } from "@/components/motion-primitives/text-roll";
 import { ShimmerButton } from "@/components/ui/shimmer-button";
@@ -55,8 +56,8 @@ export function Hero() {
           )}
           <Button
             variant="outline"
-            disabled
-            title="Coming soon — the voxel world isn't built yet"
+            render={<Link href="/" />}
+            nativeButton={false}
           >
             Enter World
           </Button>

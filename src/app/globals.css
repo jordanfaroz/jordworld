@@ -164,3 +164,18 @@
     opacity: 0.6;
   }
 }
+
+/* World loading screen progress bar — indeterminate (no real asset list to
+   track, procedural geometry loads near-instantly; this just fills the
+   dynamic-import + hydration wait with something that reads as progress). */
+@keyframes loading-bar {
+  0% {
+    transform: scaleX(0);
+  }
+  50% {
+    transform: scaleX(1);
+  }
+  100% {
+    transform: scaleX(0);
+  }
+}
