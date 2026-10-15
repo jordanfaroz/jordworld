@@ -40,8 +40,11 @@ src/
   pathfinding), proximity interaction with floating prompts, and Sheet
   panels for projects/hobbies/fast-travel/contact — all content-driven from
   `src/content/`, nothing hardcoded per-project.
-- **Phase 3** — minimap, bottom-sheet panels on mobile, and the "Enter World"
-  paper-tear intro.
+- **Phase 3** (`world` branch) — HUD polish: a region chip and SVG minimap
+  with fast travel, a responsive Drawer for panels on mobile with Prev/Next
+  project cycling, hover/in-range glow on interactables, and the "Enter
+  World" paper-tear intro (skipped for returning visitors, replayable from
+  the help dialog).
 
 ## UI libraries
 

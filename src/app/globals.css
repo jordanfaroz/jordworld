@@ -179,3 +179,44 @@
     transform: scaleX(0);
   }
 }
+
+/* "Enter World" paper-tear intro (EnterWorldIntro.tsx) — ~1.1s total: a
+   quick shake (the two halves haven't separated yet, just rattling along
+   the torn edge), then a slide-and-rotate apart to reveal the world. The
+   jagged clip-path itself is computed in the component (a seeded line, so
+   it's deterministic but not a straight cut); these keyframes only handle
+   motion. */
+@keyframes tear-open-top {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  8% {
+    transform: translate(-6px, -3px) rotate(-1deg);
+  }
+  16% {
+    transform: translate(5px, -3px) rotate(1deg);
+  }
+  24% {
+    transform: translate(-3px, 0) rotate(-0.5deg);
+  }
+  100% {
+    transform: translate(-35%, -130%) rotate(-12deg);
+  }
+}
+@keyframes tear-open-bottom {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+  }
+  8% {
+    transform: translate(6px, 3px) rotate(1deg);
+  }
+  16% {
+    transform: translate(-5px, 3px) rotate(-1deg);
+  }
+  24% {
+    transform: translate(3px, 0) rotate(0.5deg);
+  }
+  100% {
+    transform: translate(35%, 130%) rotate(12deg);
+  }
+}

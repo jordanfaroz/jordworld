@@ -42,11 +42,24 @@ export function Buildings({
   pedestals,
   hobbies,
   onInteract,
+  onHover,
 }: {
   pedestals: PedestalPlacement[];
   hobbies: HobbyPlacement[];
   onInteract: (id: string) => void;
+  onHover: (id: string | null) => void;
 }) {
+  const hoverHandlers = (id: string) => ({
+    onPointerOver: (e: { stopPropagation: () => void }) => {
+      e.stopPropagation();
+      onHover(id);
+    },
+    onPointerOut: (e: { stopPropagation: () => void }) => {
+      e.stopPropagation();
+      onHover(null);
+    },
+  });
+
   const labAnchor = REGION_ANCHORS.find((a) => a.slug === "lab")!;
   const arcadeAnchor = REGION_ANCHORS.find((a) => a.slug === "arcade")!;
   const workshopAnchor = REGION_ANCHORS.find((a) => a.slug === "workshop")!;
@@ -169,6 +182,7 @@ export function Buildings({
           rotation={[0, 0, 0.15]}
           scale={[0.6, 0.25, 0.05]}
           onClick={() => onInteract("signpost")}
+          {...hoverHandlers("signpost")}
         />
       </Instances>
 
@@ -200,6 +214,7 @@ export function Buildings({
           position={[signpostX, 0.6, signpostZ]}
           scale={[0.12, 1.2, 0.12]}
           onClick={() => onInteract("signpost")}
+          {...hoverHandlers("signpost")}
         />
       </Instances>
 
@@ -219,6 +234,7 @@ export function Buildings({
           position={[mailboxX, 0.4, mailboxZ]}
           scale={[0.1, 0.8, 0.1]}
           onClick={() => onInteract("mailbox")}
+          {...hoverHandlers("mailbox")}
         />
       </Instances>
 
@@ -228,6 +244,7 @@ export function Buildings({
         position={[signpostX, 0.8, signpostZ - 0.2]}
         rotation={[0, 0, -0.1]}
         onClick={() => onInteract("signpost")}
+        {...hoverHandlers("signpost")}
       >
         <boxGeometry args={[0.6, 0.25, 0.05]} />
         <meshStandardMaterial color={WORLD_COLORS.statusLive} />
@@ -235,6 +252,7 @@ export function Buildings({
       <mesh
         position={[mailboxX, 0.85, mailboxZ]}
         onClick={() => onInteract("mailbox")}
+        {...hoverHandlers("mailbox")}
       >
         <boxGeometry args={[0.35, 0.3, 0.25]} />
         <meshStandardMaterial color={WORLD_COLORS.statusInDev} />
@@ -255,6 +273,7 @@ export function Buildings({
               scale={[0.6, 0.6, 0.6]}
               color={WORLD_COLORS.plaza}
               onClick={() => onInteract(`project:${p.project.slug}`)}
+              {...hoverHandlers(`project:${p.project.slug}`)}
             />
           );
         })}
@@ -267,6 +286,7 @@ export function Buildings({
               scale={[0.5, 0.5, 0.5]}
               color={WORLD_COLORS.wood}
               onClick={() => onInteract(`hobby:${h.hobby.slug}`)}
+              {...hoverHandlers(`hobby:${h.hobby.slug}`)}
             />
           );
         })}
@@ -297,6 +317,7 @@ export function Buildings({
                   position={[x, 0.85, z]}
                   scale={[0.35, 0.35, 0.35]}
                   onClick={() => onInteract(`project:${p.project.slug}`)}
+                  {...hoverHandlers(`project:${p.project.slug}`)}
                 />
               );
             })}
@@ -320,6 +341,7 @@ export function Buildings({
                 rotation={[0, Math.PI / 4, 0]}
                 scale={[0.3, 0.3, 0.3]}
                 onClick={() => onInteract(`hobby:${h.hobby.slug}`)}
+                {...hoverHandlers(`hobby:${h.hobby.slug}`)}
               />
             );
           })}

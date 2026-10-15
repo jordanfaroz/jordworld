@@ -21,6 +21,9 @@ const SCREEN_DIRS = {
 
 export interface PlayerHandle {
   position: THREE.Vector3;
+  /** Radians around Y, live-mutated like `position` — read `.current` each
+   * frame rather than snapshotting, same pattern for the same reason. */
+  facing: React.RefObject<number>;
   moveTo: (worldX: number, worldZ: number) => void;
 }
 
@@ -57,6 +60,7 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
 
   useImperativeHandle(ref, () => ({
     position: position.current,
+    facing,
     moveTo(worldX, worldZ) {
       const startTile = {
         x: Math.round(position.current.x + gridOffset),
