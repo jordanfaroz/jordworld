@@ -116,6 +116,10 @@ function Decorations({ decorations }: { decorations: MapData["decorations"] }) {
   );
 }
 
+// No castShadow: trees/rocks/flowers are small ground clutter whose shadows
+// are barely noticeable, and skipping them halves their cost (a shadow-
+// casting object renders a second time for the shadow-map pass) — only the
+// player casts a real shadow (see Buildings.tsx, Lighting.tsx).
 function DecorationLayer({
   items,
   partHeight,
@@ -147,11 +151,7 @@ function DecorationLayer({
   if (items.length === 0) return null;
 
   return (
-    <instancedMesh
-      ref={ref}
-      args={[undefined, undefined, items.length]}
-      castShadow
-    >
+    <instancedMesh ref={ref} args={[undefined, undefined, items.length]}>
       <boxGeometry args={[1, partHeight, 1]} />
       <meshStandardMaterial color={partColor} />
     </instancedMesh>

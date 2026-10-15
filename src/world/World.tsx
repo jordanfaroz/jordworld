@@ -322,6 +322,12 @@ export function World() {
         frameloop={frameloop}
         aria-label="Jord World — explorable voxel overworld"
         onPointerMissed={() => setOpenPanel(null)}
+        onCreated={(state) => {
+          if (!DEBUG) return;
+          const w = window as Window & { __world?: Record<string, unknown> };
+          w.__world ??= {};
+          w.__world.renderer = state.gl;
+        }}
       >
         <color attach="background" args={["#0b1020"]} />
         <fog attach="fog" args={["#0b1020", 40, 90]} />
