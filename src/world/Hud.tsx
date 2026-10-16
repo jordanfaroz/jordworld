@@ -6,16 +6,13 @@ import Link from "next/link";
 import { TextRoll } from "@/components/motion-primitives/text-roll";
 import { getRegion } from "@/content/regions";
 import type { RegionSlug, Tile } from "./map";
-import type { Interactable } from "./interaction";
 import type { PlayerHandle } from "./Player";
 import { Minimap } from "./Minimap";
 import { HelpDialog } from "./HelpDialog";
 
 export interface HudProps {
   region: RegionSlug | "home";
-  nearest: { interactable: Interactable; inRange: boolean } | null;
   isTouch: boolean;
-  onInteract: (id: string) => void;
   reducedMotion: boolean;
   onZoomIn: () => void;
   onZoomOut: () => void;
@@ -32,9 +29,7 @@ export interface HudProps {
 
 export function Hud({
   region,
-  nearest,
   isTouch,
-  onInteract,
   reducedMotion,
   onZoomIn,
   onZoomOut,
@@ -154,15 +149,6 @@ export function Hud({
           </button>
         </div>
       </div>
-
-      {nearest?.inRange && (
-        <button
-          onClick={() => onInteract(nearest.interactable.id)}
-          className="border-grass/50 bg-background/90 text-foreground pointer-events-auto absolute bottom-24 left-1/2 -translate-x-1/2 rounded-md border-2 px-4 py-2 font-mono text-sm backdrop-blur-sm"
-        >
-          {isTouch ? "Tap to open" : `[E] ${nearest.interactable.label}`}
-        </button>
-      )}
 
       <HelpDialog
         open={helpOpen}

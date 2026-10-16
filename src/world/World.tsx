@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
-import { Stats } from "@react-three/drei";
+import { Stats, Html } from "@react-three/drei";
 import * as THREE from "three";
 
 import { usePrefersReducedMotion } from "@/lib/use-reduced-motion";
@@ -80,6 +80,15 @@ function Scene({
   );
   const hasMoved = useRef(false);
 
+  // Mirrors what's bubbled to onNearestChange — kept locally too so
+  // InteractPrompt (rendered inside the Canvas, right here in Scene) can
+  // anchor itself to the interactable's actual world position via Html,
+  // instead of the fixed screen position it used to render at.
+  const [nearestState, setNearestState] = useState<{
+    interactable: Interactable;
+    inRange: boolean;
+  } | null>(null);
+
   const targetRef = useRef(new THREE.Vector3(0, 0, 0));
   const lastNearestId = useRef<string | null>(null);
   const lastRegion = useRef<RegionSlug | "home" | null>(null);
@@ -110,11 +119,12 @@ function Scene({
     const id = inRange ? nearest!.interactable.id : null;
     if (id !== lastNearestId.current) {
       lastNearestId.current = id;
-      onNearestChange(
+      const next =
         inRange && nearest
           ? { interactable: nearest.interactable, inRange: true }
-          : null,
-      );
+          : null;
+      onNearestChange(next);
+      setNearestState(next);
     }
 
     if (inRange && pendingInteractIdRef.current === id && id) {
@@ -177,6 +187,13 @@ function Scene({
         hobbies={hobbies}
         onInteract={handleInteract}
         onHover={handleHover}
+        playerPositionRef={targetRef}
+        hoveredIdRef={hoveredIdRef}
+      />
+      <InteractPrompt
+        nearest={nearestState}
+        isTouch={isTouch}
+        onInteract={onArrival}
       />
       <Player
         ref={internalPlayerRef}
@@ -196,6 +213,44 @@ function Scene({
       <InteractGlow targetRef={glowTargetRef} />
       {DEBUG && <Stats />}
     </>
+  );
+}
+
+/** Anchored to the interactable's own world position via drei's Html —
+ * previously this rendered as a fixed-position HUD button that stayed at
+ * the bottom of the screen regardless of where the object actually was.
+ *
+ * The Html wrapper itself stays mounted at all times (parked off-world when
+ * there's nothing in range) rather than conditionally rendering it — drei's
+ * Html creates its own portal root, and mounting/unmounting that every time
+ * the player walks in and out of range was tripping React's "unmount while
+ * rendering" warning. Only the button inside toggles. */
+function InteractPrompt({
+  nearest,
+  isTouch,
+  onInteract,
+}: {
+  nearest: { interactable: Interactable; inRange: boolean } | null;
+  isTouch: boolean;
+  onInteract: (id: string) => void;
+}) {
+  const visible = !!nearest?.inRange;
+  const interactable = nearest?.interactable;
+  const position: [number, number, number] = interactable
+    ? [interactable.worldX, 1.9, interactable.worldZ]
+    : [0, -1000, 0];
+
+  return (
+    <Html position={position} center zIndexRange={[15, 0]}>
+      {visible && interactable && (
+        <button
+          onClick={() => onInteract(interactable.id)}
+          className="border-grass/50 bg-background/90 text-foreground pointer-events-auto rounded-md border-2 px-4 py-2 font-mono text-sm whitespace-nowrap backdrop-blur-sm"
+        >
+          {isTouch ? "Tap to open" : `[E] ${interactable.label}`}
+        </button>
+      )}
+    </Html>
   );
 }
 
@@ -524,9 +579,7 @@ export function World() {
 
       <Hud
         region={region}
-        nearest={nearest}
         isTouch={isTouch}
-        onInteract={handleArrival}
         reducedMotion={reducedMotion}
         onZoomIn={() => applyZoomDelta(8)}
         onZoomOut={() => applyZoomDelta(-8)}

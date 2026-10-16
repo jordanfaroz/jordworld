@@ -4,8 +4,10 @@ import { OrthographicCamera } from "@react-three/drei";
 import * as THREE from "three";
 
 export const MIN_ZOOM = 20;
-export const MAX_ZOOM = 80;
-export const DEFAULT_ZOOM = 40;
+export const MAX_ZOOM = 90;
+// Close enough that the player and nearby props read clearly (~1/3 of the
+// island visible); zoom-out is still available down to MIN_ZOOM.
+export const DEFAULT_ZOOM = 68;
 
 // normalize(1,1,1) happens to be exactly the "true isometric" angle: ~45°
 // yaw (equal x/z components) and ~35.26° pitch (arcsin(1/√3)) — matches the

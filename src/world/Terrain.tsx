@@ -108,7 +108,7 @@ function Decorations({ decorations }: { decorations: MapData["decorations"] }) {
       <DecorationLayer
         items={flowers}
         partHeight={0.2}
-        partColor={WORLD_COLORS.flower}
+        partColors={WORLD_COLORS.flowerColors}
         yOffset={0.1}
         scale={0.2}
       />
@@ -120,16 +120,29 @@ function Decorations({ decorations }: { decorations: MapData["decorations"] }) {
 // are barely noticeable, and skipping them halves their cost (a shadow-
 // casting object renders a second time for the shadow-map pass) — only the
 // player casts a real shadow (see Buildings.tsx, Lighting.tsx).
+// Deterministic color pick from a tile's own grid position — not Math.random
+// (the React Compiler's purity rule bans impure calls during render), and
+// stable across re-renders without needing extra seeded-RNG state.
+function pickColor(colors: readonly string[], x: number, z: number): string {
+  const hash = (x * 73856093) ^ (z * 19349663);
+  return colors[Math.abs(hash) % colors.length];
+}
+
 function DecorationLayer({
   items,
   partHeight,
   partColor,
+  partColors,
   yOffset,
   scale,
 }: {
   items: { x: number; z: number }[];
   partHeight: number;
-  partColor: string;
+  /** A single color for every instance. */
+  partColor?: string;
+  /** Varied per-instance color (e.g. flowers) — still one draw call, picked
+   * via instanceColor rather than splitting into one group per color. */
+  partColors?: readonly string[];
   yOffset: number;
   scale: number;
 }) {
@@ -139,21 +152,26 @@ function DecorationLayer({
     const mesh = ref.current;
     if (!mesh) return;
     const matrix = new THREE.Matrix4();
+    const color = new THREE.Color();
     items.forEach(({ x, z }, i) => {
       const [wx, , wz] = tileToWorld(x, z);
       matrix.makeScale(scale, scale, scale);
       matrix.setPosition(wx, 0.2 + yOffset, wz);
       mesh.setMatrixAt(i, matrix);
+      if (partColors) {
+        mesh.setColorAt(i, color.set(pickColor(partColors, x, z)));
+      }
     });
     mesh.instanceMatrix.needsUpdate = true;
-  }, [items, scale, yOffset]);
+    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+  }, [items, scale, yOffset, partColors]);
 
   if (items.length === 0) return null;
 
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, items.length]}>
       <boxGeometry args={[1, partHeight, 1]} />
-      <meshStandardMaterial color={partColor} />
+      <meshStandardMaterial color={partColor ?? "#ffffff"} />
     </instancedMesh>
   );
 }

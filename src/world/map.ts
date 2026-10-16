@@ -168,9 +168,11 @@ export function generateMap(seed = 1337): MapData {
     for (let z = 0; z < GRID_SIZE; z++) {
       if (tiles[x][z] !== "grass") continue;
       const roll = rand();
+      // Flowers sparser than the original range (was 0.06-0.09): a uniform
+      // red speckle read as noise once there were this many on screen.
       if (roll < 0.04) decorations.push({ x, z, kind: "tree" });
       else if (roll < 0.06) decorations.push({ x, z, kind: "rock" });
-      else if (roll < 0.09) decorations.push({ x, z, kind: "flower" });
+      else if (roll < 0.072) decorations.push({ x, z, kind: "flower" });
     }
   }
 
