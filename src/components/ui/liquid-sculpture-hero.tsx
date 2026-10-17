@@ -1271,6 +1271,11 @@ export interface SculptureHeroProps {
   height?: string;
   /** Giant faint word behind the sculpture. Empty to hide. */
   backdropText?: string;
+  /** Lines shown instead of `backdropText` once the layout drops to the
+   * mobile/narrow breakpoint — e.g. a long word split in two so each line
+   * still reads at a readable size instead of shrinking to fit one. Falls
+   * back to `backdropText` on a single line when not given. */
+  backdropTextMobile?: string[];
   showCredit?: boolean;
   className?: string;
   style?: React.CSSProperties;
@@ -1365,7 +1370,10 @@ const CSS = `
 .sh-root[data-swap="1"] .sh-canvas{opacity:0;transition-duration:.25s}
 .sh-root[data-swap="1"] .sh-fallback{opacity:0;transition-duration:.25s}
 .sh-backdrop{position:absolute;left:50%;z-index:0;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:none;user-select:none;
-  font-family:var(--sh-head);font-weight:600;letter-spacing:-.06em;line-height:.8;color:color-mix(in srgb,var(--sh-fg) 2%,transparent)}
+  width:max-content;text-align:center;font-family:var(--font-pixel),var(--sh-head);font-weight:700;letter-spacing:0;line-height:.92;
+  font-variant-ligatures:none;font-feature-settings:"liga" 0,"clig" 0,"calt" 0;
+  background:linear-gradient(to bottom,#c4b5fd,#60a5fa);background-clip:text;-webkit-background-clip:text;color:transparent;opacity:.05}
+.sh-backdrop-line{display:block;white-space:nowrap}
 .sh-nav{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:24px;
   padding:26px clamp(20px,3.2cqw,48px) 0}
 .sh-brand{font-family:var(--sh-head);font-weight:600;font-size:17px;letter-spacing:-.02em;color:inherit;text-decoration:none}
@@ -1579,6 +1587,7 @@ export default function SculptureHero(props: SculptureHeroProps) {
     intro = false,
     height = "100svh",
     backdropText = "forma",
+    backdropTextMobile,
     showCredit = true,
     className,
     style,
@@ -1703,10 +1712,20 @@ export default function SculptureHero(props: SculptureHeroProps) {
     const rect = computeRect(w, h, aspectRef.current, band, layout.current);
     const bd = backdropRef.current;
     if (bd) {
-      const chars = Math.max(1, (bd.textContent || "").length);
-      bd.style.fontSize =
-        Math.min((band.bottom - band.top) * 0.95, (w * 0.92) / (chars * 0.56)) +
-        "px";
+      // One line (desktop) or several stacked .sh-backdrop-line children
+      // (mobile split) — either way, size so the widest line hits ~90% of
+      // the hero width, never taller than the nav-to-content band allows.
+      const lineEls = bd.querySelectorAll(".sh-backdrop-line");
+      const lineTexts =
+        lineEls.length > 0
+          ? Array.from(lineEls, (el) => el.textContent || "")
+          : [bd.textContent || ""];
+      let fontSize = (band.bottom - band.top) * 0.95;
+      for (const text of lineTexts) {
+        const chars = Math.max(1, text.length);
+        fontSize = Math.min(fontSize, (w * 0.9) / (chars * 0.62));
+      }
+      bd.style.fontSize = fontSize + "px";
       bd.style.top = (band.top + band.bottom) / 2 + "px";
     }
     const img = imgRef.current;
@@ -1922,7 +1941,13 @@ export default function SculptureHero(props: SculptureHeroProps) {
       <style>{CSS}</style>
       {backdropText ? (
         <div ref={backdropRef} className="sh-backdrop" aria-hidden="true">
-          {backdropText}
+          {isMobile && backdropTextMobile && backdropTextMobile.length > 0
+            ? backdropTextMobile.map((line, i) => (
+                <div key={i} className="sh-backdrop-line">
+                  {line}
+                </div>
+              ))
+            : backdropText}
         </div>
       ) : null}
       <div ref={stageRef} className="sh-stage" aria-hidden="true">

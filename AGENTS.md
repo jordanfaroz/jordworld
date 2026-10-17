@@ -59,9 +59,8 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
     into the idle render once the engine stops simulating (a latent bug: the
     idle path stops updating `st.zw` but `streaks` keeps using whatever
     value was last there), which read as a permanent stray "flame"
-    distorting the shape. The backdrop word's opacity (`.sh-backdrop`
-    color-mix percentage) was also turned down further, from 5% to 2%. A
-    bounded "ambient orbital sway" was prototyped in `PART_VS` (tangential
+    distorting the shape. A bounded "ambient orbital sway" was prototyped in
+    `PART_VS` (tangential
     drift around the image centre) but measurably added ~1.3s of Lighthouse
     mobile TBT — shader-compile cost under this dev machine's software GL
     rendering — for a subtle effect, so it was pulled back out; the ambient
@@ -94,4 +93,16 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
     injects a runtime Google Fonts `<link>` with `display=swap`, which was a
     real, measured CLS source (the headline reflowing once the font swap
     landed); the site already loads "Geist" through `next/font` anyway, so
-    this also avoids fetching it a second time.
+    this also avoids fetching it a second time. The backdrop word (`.sh-backdrop`)
+    was later brought back — hardcoded to this site's own pixel font
+    (`var(--font-pixel)`, ligatures off the same way `.font-pixel` does it in
+    `globals.css`) and a vertical gradient-text fill instead of the
+    registry's single flat colour, both specific enough to this project that
+    they're just written directly into the CSS rule rather than exposed as
+    more props. Also added `backdropTextMobile?: string[]`: an opt-in array
+    of lines (each its own `.sh-backdrop-line`) shown instead of
+    `backdropText` once the component's own `isMobile` state flips, so a
+    long word (`"JORDWORLD"`) can split in two there instead of just
+    shrinking to fit one line — `relayout()`'s font-size calc now sizes
+    against the widest of however many lines are present, not a single
+    hardcoded text source.

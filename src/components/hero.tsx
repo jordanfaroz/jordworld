@@ -204,7 +204,8 @@ export function Hero() {
           theme="dark"
           themeToggle={false}
           accentColor="#22d3ee"
-          backdropText=""
+          backdropText="JORDWORLD"
+          backdropTextMobile={["JORD", "WORLD"]}
           // Reuse the site's own already-loaded, preloaded next/font
           // variables instead of SculptureHero's default behaviour (an
           // injected runtime Google Fonts <link>, fetched client-side with
