@@ -39,3 +39,12 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
     cluster (`Intl.Segmenter`, with an `Array.from` fallback) instead of the
     registry's `.split("")`, which breaks surrogate-pair emoji into mojibake
     by splitting on UTF-16 code units
+  - `src/components/ui/liquid-sculpture-hero.tsx` — a 21st.dev component
+    ("Sculpture Hero" by guglielmogiannattasio.it, pasted in directly, not
+    via `shadcn add`). Fixed two copy/paste-corrupted string literals
+    (`headline` in `DEFAULTS` and `renderHeadline`'s `text.split(...)`) where
+    a `\n` escape had been flattened into a literal line break, which is
+    invalid JS. `showCredit` stays `true` — the platform's own terms require
+    visible attribution to the original author for a derived component like
+    this one. See `src/components/hero.tsx` for how it's wired up (a
+    procedurally generated black-hole image, no stock photo or CDN asset)
