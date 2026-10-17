@@ -52,14 +52,22 @@ export function TextRoll({
   variants,
   onAnimationComplete,
 }: TextRollProps) {
+  // opacity rides along with rotateX, not just backface-visibility: on a
+  // software-rendered/headless Chromium (no real GPU — the same category of
+  // environment that forces SwiftShader for WebGL elsewhere in this repo),
+  // a 90°-rotated layer's backface can still paint instead of culling,
+  // leaving both layers visible at rest (every character rendering 3x: the
+  // two motion layers plus the invisible sizing span, all showing text).
+  // opacity:0 hides the edge-on layer regardless of whether 3D backface
+  // culling is actually honored.
   const defaultVariants = {
     enter: {
-      initial: { rotateX: 0 },
-      animate: { rotateX: 90 },
+      initial: { rotateX: 0, opacity: 1 },
+      animate: { rotateX: 90, opacity: 0 },
     },
     exit: {
-      initial: { rotateX: 90 },
-      animate: { rotateX: 0 },
+      initial: { rotateX: 90, opacity: 0 },
+      animate: { rotateX: 0, opacity: 1 },
     },
   } as const;
 
