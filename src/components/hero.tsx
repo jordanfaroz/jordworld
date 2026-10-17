@@ -32,11 +32,25 @@ const SculptureHero = dynamic(
 );
 
 const IMAGE_ALT =
-  "A black hole's shadow ringed by a bright photon ring, with a thin violet-to-blue accretion disk crossing in front and a soft lensed halo above and below it";
+  "A black hole's shadow ringed by a bright magenta-violet photon ring, tilted beneath a thick lensed halo, with a long thin purple-to-blue accretion disk crossing in front";
 
 function firstSentence(text: string): string {
   const idx = text.indexOf(". ");
   return idx === -1 ? text : text.slice(0, idx + 1);
+}
+
+/** The disturbed-state particle density only — restStyle="image" means the
+ * crisp generated image shows at rest, so this only costs real work where
+ * the pointer is actively stirring it. Tiered by rough device capability,
+ * detected client-side once on mount (navigator/matchMedia aren't available
+ * during SSR). */
+function detectParticleDensity(): number {
+  const nav = navigator as Navigator & { deviceMemory?: number };
+  const lowEnd =
+    (nav.hardwareConcurrency ?? 8) <= 4 || (nav.deviceMemory ?? 8) <= 4;
+  if (lowEnd) return 0.6;
+  const coarse = window.matchMedia("(pointer: coarse)").matches;
+  return coarse ? 1.0 : 1.4;
 }
 
 /** The same static layout for two cases: reduced motion (no particle engine
@@ -112,6 +126,7 @@ export function Hero() {
     desktop: string;
     mobile: string;
   } | null>(null);
+  const [particleDensity, setParticleDensity] = useState(1.0);
 
   useEffect(() => {
     // Generated regardless of reduced-motion: the static fallback needs the
@@ -120,17 +135,29 @@ export function Hero() {
     // first paint.
     let cancelled = false;
     const raf = requestAnimationFrame(() => {
+      // shadowRadiusFraction differs per image: SculptureHero displays the
+      // desktop and mobile images at different scale factors (see
+      // sculptureScale/mobileSculptureScale below), so hitting the same
+      // ~22%-of-hero-height shadow size on screen needs a different
+      // fraction of each source image.
       const desktop = generateBlackHoleImage({
         ...DESKTOP_SIZE,
         seed: BLACK_HOLE_SEED,
-        warmHighlight: true,
+        shadowRadiusFraction: 0.1286,
       });
       const mobile = generateBlackHoleImage({
         ...MOBILE_SIZE,
         seed: BLACK_HOLE_SEED + 1,
-        warmHighlight: true,
+        shadowRadiusFraction: 0.163,
       });
       if (!cancelled) setImages({ desktop, mobile });
+    });
+    // queueMicrotask, not a direct call: same pattern as
+    // usePrefersReducedMotion (src/lib/use-reduced-motion.ts) for a
+    // client-only browser-capability read that can't happen during the
+    // (server-rendered) first pass without a hydration mismatch.
+    queueMicrotask(() => {
+      if (!cancelled) setParticleDensity(detectParticleDensity());
     });
     return () => {
       cancelled = true;
@@ -173,26 +200,33 @@ export function Hero() {
           hint="Stir the dust"
           hintTouch="Touch to stir"
           background="#0b1020"
+          darkBackground="#0b1020"
           theme="dark"
           themeToggle={false}
           accentColor="#22d3ee"
-          backdropText="JORD"
+          backdropText=""
+          // Reuse the site's own already-loaded, preloaded next/font
+          // variables instead of SculptureHero's default behaviour (an
+          // injected runtime Google Fonts <link>, fetched client-side with
+          // font-display:swap) — that was a real, measured CLS source: the
+          // headline visibly reflowed once the font swap landed, which
+          // ResizeObserver picked up and fed into the sculpture's own
+          // relayout(). loadFonts={false} turns that mechanism off.
+          loadFonts={false}
+          headingFont="var(--font-sans), 'Helvetica Neue', Arial, sans-serif"
+          accentFont="var(--font-instrument-serif), 'Times New Roman', serif"
           interactive
-          // The component's own buildParticles() walks every cell of a
-          // baseGrid*sqrt(density) grid synchronously on the main thread — a
-          // real Lighthouse mobile TBT/bootup-time cost (confirmed directly:
-          // pushing this to 1.8, the density the brief originally asked for,
-          // measurably doubled main-thread blocking time in local testing).
-          // 0.8 is a deliberate compromise below that ask, trading some of
-          // the "finer dust" look for staying inside the performance budget.
-          // Spawn is now stochastic on source alpha (see buildParticles in
-          // liquid-sculpture-hero.tsx) instead of a hard threshold, so going
-          // denser reads as finer dust rather than a visibly denser grid —
-          // lowPower devices still clamp the grid itself (baseGrid 640 vs
-          // 1000) independently of this.
-          particleDensity={0.8}
+          // restStyle="image": the crisp generated image shows at rest;
+          // particles only spawn where the pointer disturbs it, then flow
+          // back. Density below is tiered by device capability (see
+          // detectParticleDensity) and only costs real work in that
+          // disturbed state — buildParticles() itself still runs once up
+          // front regardless of restStyle, so it isn't free, but previous
+          // local Lighthouse testing found the main-thread cost scales with
+          // this density, hence the lower tiers for weaker devices.
+          particleDensity={particleDensity}
           dotSize={0.85}
-          restStyle="particles"
+          restStyle="image"
           ambient
           ambientIntensity={1.1}
           turbulence={1.3}
@@ -200,6 +234,8 @@ export function Hero() {
           streaks
           intro={false}
           showCredit
+          sculptureScale={1.15}
+          mobileSculptureScale={1.46}
           height="100svh"
         />
       )}

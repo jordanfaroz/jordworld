@@ -1,10 +1,27 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono, Pixelify_Sans } from "next/font/google";
+import {
+  Geist,
+  Geist_Mono,
+  Instrument_Serif,
+  Pixelify_Sans,
+} from "next/font/google";
 import "./globals.css";
 
 const geistSans = Geist({
   variable: "--font-sans",
   subsets: ["latin"],
+});
+
+// Self-hosted via next/font (preloaded, no runtime fetch or FOUC) instead of
+// the classic hero's own injected Google Fonts <link>, which was a real,
+// measured CLS source (the headline reflowing once the font swapped in).
+// Only ever referenced by the classic hero's headline accent — see
+// src/components/hero.tsx — not a site-wide typeface.
+const instrumentSerif = Instrument_Serif({
+  variable: "--font-instrument-serif",
+  subsets: ["latin"],
+  weight: "400",
+  style: ["normal", "italic"],
 });
 
 const geistMono = Geist_Mono({
@@ -31,7 +48,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html
       lang="en"
-      className={`dark ${geistSans.variable} ${geistMono.variable} ${pixelifySans.variable} h-full antialiased`}
+      className={`dark ${geistSans.variable} ${geistMono.variable} ${pixelifySans.variable} ${instrumentSerif.variable} h-full antialiased`}
     >
       <body className="bg-background text-foreground flex min-h-full flex-col">
         {children}

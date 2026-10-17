@@ -4,36 +4,42 @@
  * or pulled from a CDN — nothing here is a licensed/sourced image, and the
  * seeded noise makes every visitor see the exact same artwork.
  *
- * "Gargantua" style: a thin, nearly edge-on accretion disk crossing in front
- * of a pure-black shadow, with a soft circular lensing halo showing through
- * above and below it (the bent far side of the disk) and a crisp bright
- * photon ring hugging the shadow's own edge. The desktop image lays the disk
- * out horizontally; the mobile image is the same scene with the disk
- * vertical, so it fills a portrait frame — driven automatically by whichever
- * of width/height is larger, not a separate flag.
+ * "Gargantua" style, matching a purple reference render closely:
+ *   - a thin, nearly edge-on outer disk running the full width (or height,
+ *     on the mobile/portrait variant), purple near the hole fading to
+ *     blue/teal and dark grey at the tips, with fine fibrous streaks
+ *   - a thick lensed halo (the bent far side of the disk) arcing over the
+ *     top and under the bottom of the shadow
+ *   - a crisp, bright magenta-violet photon ring hugging the shadow itself
+ *   - the disk's near edge redrawn on top, clipped to the shadow's lower
+ *     half, so it visibly crosses in front of (occludes) the bottom of the
+ *     shadow rather than just disappearing behind it
+ *   - the whole system tilted ~10°, descending left-to-right
+ * The desktop image lays the disk out horizontally; the mobile image is the
+ * same scene with the disk vertical, so it fills a portrait frame — driven
+ * automatically by whichever of width/height is larger, not a separate flag.
  *
  * Transparent background (not a flat color): SculptureHero auto-detects an
  * image as a "cutout" when enough of it is transparent and keys by alpha,
  * which is cleaner than color-distance keying against a flat `imageBackground`
  * and needs no extra prop. The site's own navy (#0b1020) shows through from
- * the `background` prop passed to SculptureHero, not from this PNG.
+ * the `darkBackground` prop passed to SculptureHero, not from this PNG.
  */
 
-// Halo / inner-disk violets
-const HALO_INNER = [196, 181, 253] as const; // #c4b5fd
-const HALO_MID = [139, 92, 246] as const; // #8b5cf6
-const HALO_DEEP = [109, 40, 217] as const; // #6d28d9
-// Outer-disk blues fading to cool grey
-const BLUE_MID = [37, 99, 235] as const; // #2563eb
-const BLUE_LIGHT = [96, 165, 250] as const; // #60a5fa
-const GREY_1 = [51, 65, 85] as const; // #334155
-const GREY_2 = [100, 116, 139] as const; // #64748b
-// Photon ring: near-white with a blue tint
-const PHOTON_WHITE = [255, 255, 255] as const;
-const PHOTON_TINT = [199, 210, 254] as const; // #c7d2fe
-// Reserved for the optional "warm highlight" variant only — never used by
-// default, and never for clouds/blobs.
-const WARM = [251, 191, 36] as const; // #fbbf24
+// Halo: purple core, lavender highlight
+const HALO_LAVENDER = [196, 181, 253] as const; // #c4b5fd
+const HALO_PURPLE = [109, 40, 217] as const; // #6d28d9
+// Disk: purple near the hole, fading to blue/teal, dark grey at the tips
+const DISK_PURPLE = [139, 92, 246] as const; // #8b5cf6
+const DISK_BLUE_DEEP = [30, 58, 138] as const; // #1e3a8a
+const DISK_TEAL = [14, 116, 144] as const; // #0e7490
+const DISK_BLUE_LIGHT = [96, 165, 250] as const; // #60a5fa
+const DISK_GREY = [51, 65, 85] as const; // #334155
+// Photon ring: thin, bright, magenta-violet
+const PHOTON_HOT = [255, 255, 255] as const;
+const PHOTON_MAGENTA = [232, 121, 249] as const; // #e879f9
+
+const TILT_RAD = (10 * Math.PI) / 180;
 
 /** Mulberry32 — same tiny deterministic PRNG used elsewhere in this repo
  * (src/world/map.ts, EnterWorldIntro.tsx) for seeded-but-reproducible output. */
@@ -73,114 +79,184 @@ function drawStars(
   }
 }
 
-/** Soft circular lensing halo around the shadow — the bent light from the far
- * side of the disk, reading as a glow that frames the shadow above and below
- * wherever the edge-on disk band doesn't cover it. Brighter near the hole,
- * violet fading through blue to grey. */
-function drawLensingHalo(
+/** Thick halo around the shadow — the far side of the disk, bent into view
+ * by lensing. Stretched into an upright oval (taller than wide) rather than
+ * a perfect circle, so it reads as a thick band arcing specifically over
+ * the top and under the bottom of the shadow, not a uniform ring — on top
+ * of that, the disk itself (drawn after) covers most of its left/right
+ * extent anyway. Purple core with a bright lavender inner highlight, soft
+ * at the outer edge. */
+function drawLensedHalo(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   rOuter: number,
   rInner: number,
 ) {
-  const g = ctx.createRadialGradient(cx, cy, rInner * 0.7, cx, cy, rOuter);
-  g.addColorStop(0, rgba(HALO_INNER, 0));
-  g.addColorStop(0.1, rgba(HALO_INNER, 0.85));
-  g.addColorStop(0.32, rgba(HALO_MID, 0.5));
-  g.addColorStop(0.58, rgba(BLUE_MID, 0.28));
-  g.addColorStop(0.82, rgba(GREY_1, 0.12));
-  g.addColorStop(1, rgba(GREY_1, 0));
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.scale(0.86, 1.18);
+  const g = ctx.createRadialGradient(0, 0, rInner * 0.65, 0, 0, rOuter);
+  g.addColorStop(0, rgba(HALO_LAVENDER, 0));
+  g.addColorStop(0.1, rgba(HALO_LAVENDER, 0.95));
+  g.addColorStop(0.3, rgba(HALO_LAVENDER, 0.7));
+  g.addColorStop(0.55, rgba(HALO_PURPLE, 0.5));
+  g.addColorStop(0.82, rgba(HALO_PURPLE, 0.16));
+  g.addColorStop(1, rgba(HALO_PURPLE, 0));
   ctx.fillStyle = g;
   ctx.beginPath();
-  ctx.arc(cx, cy, rOuter, 0, Math.PI * 2);
-  ctx.arc(cx, cy, rInner * 0.55, 0, Math.PI * 2, true);
+  ctx.arc(0, 0, rOuter, 0, Math.PI * 2);
+  ctx.arc(0, 0, rInner * 0.5, 0, Math.PI * 2, true);
   ctx.fill("evenodd");
+  ctx.restore();
 }
 
-/** Thin, nearly edge-on accretion disk crossing in front of the shadow, with
- * doppler beaming (one side noticeably brighter). `vertical` rotates the
- * whole band 90° for the mobile/portrait frame — same gradients, same
- * doppler side, just turned on its axis. `warmHighlight` adds a small warm
- * accent on the bright side only (variant C). */
-function drawAccretionDisk(
+/** The long, thin, nearly edge-on outer disk, drawn in the disk's own local
+ * (rotated, squashed) coordinate system — purple near the hole fading to
+ * blue/teal and dark grey at the tips, doppler-brightened on the approaching
+ * side, with a handful of soft fibrous streaks along its length. Blurred
+ * for smooth gradients rather than a hard-edged shape. */
+function drawDiskLocal(
+  ctx: CanvasRenderingContext2D,
+  rOuter: number,
+  rInner: number,
+  rand: () => number,
+) {
+  const base = ctx.createRadialGradient(0, 0, rInner * 0.8, 0, 0, rOuter);
+  base.addColorStop(0, rgba(DISK_PURPLE, 0.95));
+  base.addColorStop(0.3, rgba(DISK_PURPLE, 0.85));
+  base.addColorStop(0.52, rgba(DISK_BLUE_DEEP, 0.62));
+  base.addColorStop(0.72, rgba(DISK_TEAL, 0.44));
+  base.addColorStop(0.9, rgba(DISK_BLUE_LIGHT, 0.26));
+  base.addColorStop(1, rgba(DISK_GREY, 0));
+  ctx.fillStyle = base;
+  ctx.beginPath();
+  ctx.arc(0, 0, rOuter, 0, Math.PI * 2);
+  ctx.arc(0, 0, rInner * 0.55, 0, Math.PI * 2, true);
+  ctx.fill("evenodd");
+
+  // Doppler beaming: the approaching side reads brighter, near-white at its
+  // core, fading smoothly — the receding side (not touched here) stays the
+  // cooler blue/teal of the base gradient above.
+  ctx.globalCompositeOperation = "lighter";
+  const beamX = rOuter * 0.42;
+  const beam = ctx.createRadialGradient(beamX, 0, 0, beamX, 0, rOuter * 0.78);
+  beam.addColorStop(0, rgba(PHOTON_HOT, 0.75));
+  beam.addColorStop(0.35, rgba(PHOTON_MAGENTA, 0.45));
+  beam.addColorStop(1, rgba(PHOTON_MAGENTA, 0));
+  ctx.fillStyle = beam;
+  ctx.beginPath();
+  ctx.arc(0, 0, rOuter, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = "source-over";
+
+  // Fine fibrous streaks along the disk's length — thin, low-opacity curved
+  // strokes rather than a noise field, so the result stays smooth, not grainy.
+  const streakPalette = [
+    DISK_PURPLE,
+    DISK_BLUE_DEEP,
+    DISK_TEAL,
+    DISK_BLUE_LIGHT,
+  ] as const;
+  ctx.lineCap = "round";
+  for (let i = 0; i < 10; i++) {
+    const yOff = (rand() - 0.5) * rOuter * 0.5;
+    const xStart = -rOuter * (0.7 + rand() * 0.3);
+    const xEnd = rOuter * (0.7 + rand() * 0.3);
+    const bow = (rand() - 0.5) * rOuter * 0.12;
+    const color = streakPalette[Math.floor(rand() * streakPalette.length)];
+    ctx.strokeStyle = rgba(color, 0.12 + rand() * 0.16);
+    ctx.lineWidth = rOuter * (0.015 + rand() * 0.02);
+    ctx.beginPath();
+    ctx.moveTo(xStart, yOff);
+    ctx.quadraticCurveTo(0, yOff + bow, xEnd, yOff);
+    ctx.stroke();
+  }
+}
+
+/** Draws the outer disk tilted and squashed into an edge-on band. `vertical`
+ * adds a 90° base rotation for the mobile/portrait frame; the ~10° tilt is
+ * layered on top either way, so the disk always reads as descending
+ * left-to-right like the reference. */
+function drawOuterDisk(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   rOuter: number,
   rInner: number,
   vertical: boolean,
-  warmHighlight: boolean,
+  rand: () => number,
+  squash = 0.1,
 ) {
-  const squash = 0.12; // thin, nearly edge-on
-
   ctx.save();
   ctx.translate(cx, cy);
-  if (vertical) ctx.rotate(Math.PI / 2);
+  ctx.rotate((vertical ? Math.PI / 2 : 0) + TILT_RAD);
   ctx.scale(1, squash);
-
-  const ring = ctx.createRadialGradient(0, 0, rInner * 0.8, 0, 0, rOuter);
-  ring.addColorStop(0, rgba(HALO_INNER, 0.95));
-  ring.addColorStop(0.16, rgba(HALO_MID, 0.85));
-  ring.addColorStop(0.36, rgba(HALO_DEEP, 0.6));
-  ring.addColorStop(0.6, rgba(BLUE_MID, 0.45));
-  ring.addColorStop(0.82, rgba(BLUE_LIGHT, 0.25));
-  ring.addColorStop(1, rgba(GREY_2, 0));
-  ctx.fillStyle = ring;
-  ctx.beginPath();
-  ctx.arc(0, 0, rOuter, 0, Math.PI * 2);
-  ctx.arc(0, 0, rInner * 0.55, 0, Math.PI * 2, true);
-  ctx.fill("evenodd");
-
-  // Doppler beaming: the approaching side of the disk reads brighter.
-  ctx.globalCompositeOperation = "lighter";
-  const beamX = rOuter * 0.55;
-  const beam = ctx.createRadialGradient(beamX, 0, 0, beamX, 0, rOuter * 0.9);
-  beam.addColorStop(0, rgba(PHOTON_WHITE, 0.55));
-  beam.addColorStop(0.45, rgba(HALO_INNER, 0.28));
-  beam.addColorStop(1, rgba(HALO_INNER, 0));
-  ctx.fillStyle = beam;
-  ctx.beginPath();
-  ctx.arc(0, 0, rOuter, 0, Math.PI * 2);
-  ctx.fill();
-
-  if (warmHighlight) {
-    const warm = ctx.createRadialGradient(
-      beamX * 0.8,
-      0,
-      0,
-      beamX * 0.8,
-      0,
-      rOuter * 0.4,
-    );
-    warm.addColorStop(0, rgba(WARM, 0.2));
-    warm.addColorStop(1, rgba(WARM, 0));
-    ctx.fillStyle = warm;
-    ctx.beginPath();
-    ctx.arc(0, 0, rOuter, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
+  drawDiskLocal(ctx, rOuter, rInner, rand);
   ctx.restore();
 }
 
-/** The sharpest element in the scene: a thin, crisp, bright ring hugging the
- * shadow directly, white at its hottest cooling to a pale blue tint, with
- * the pure-black event horizon on top. */
+/** Redraws the disk's near edge on top of everything, clipped to the lower
+ * half of the shadow's own circle, so it visibly crosses in front of
+ * (occludes) the bottom of the shadow instead of just stopping at its edge —
+ * the far side is what the lensed halo above represents instead. Noticeably
+ * thicker (bigger squash) and brighter than the outer disk: this is the
+ * near, hottest part of the material, close enough to fill most of the
+ * shadow's lower half rather than a thin sliver through it. */
+function drawFrontDiskSlice(
+  ctx: CanvasRenderingContext2D,
+  cx: number,
+  cy: number,
+  rOuter: number,
+  rInner: number,
+  vertical: boolean,
+  shadowR: number,
+  rand: () => number,
+) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, shadowR * 1.02, 0, Math.PI * 2);
+  ctx.clip();
+  // The occlusion boundary follows the disk's own tilt (and its 90° base
+  // rotation on the vertical/mobile frame), not a plain horizontal line —
+  // the near/far transition should run along the disk's own plane. The clip
+  // and the disk draw both need to happen inside this same rotated frame
+  // (an inner save/restore around just the clip would undo it again before
+  // the draw), so this calls drawDiskLocal directly instead of going
+  // through drawOuterDisk, which would re-apply its own translate/rotate.
+  ctx.translate(cx, cy);
+  ctx.rotate((vertical ? Math.PI / 2 : 0) + TILT_RAD);
+  ctx.beginPath();
+  ctx.rect(-shadowR * 2 - 4, 0, shadowR * 4 + 8, shadowR * 2 + 4);
+  ctx.clip();
+  ctx.scale(1, 0.3);
+  ctx.globalAlpha = 0.92;
+  // rInner=0, not the real disk inner radius: at this much bigger squash the
+  // annulus's inner cutout would open up into a visible gap/hole through
+  // the middle of the band instead of staying hidden the way it does on the
+  // thin outer disk.
+  drawDiskLocal(ctx, rOuter * 0.85, 0, rand);
+  ctx.restore();
+}
+
+/** The sharpest element in the scene: a thin, crisp, bright magenta-violet
+ * ring hugging the shadow directly, with the pure-black event horizon on
+ * top. */
 function drawPhotonRingAndHorizon(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   r: number,
 ) {
-  const photon = ctx.createRadialGradient(cx, cy, r * 0.9, cx, cy, r * 1.16);
-  photon.addColorStop(0, rgba(PHOTON_WHITE, 0));
-  photon.addColorStop(0.4, rgba(PHOTON_WHITE, 0.98));
-  photon.addColorStop(0.68, rgba(PHOTON_TINT, 0.65));
-  photon.addColorStop(1, rgba(PHOTON_TINT, 0));
+  const photon = ctx.createRadialGradient(cx, cy, r * 0.88, cx, cy, r * 1.18);
+  photon.addColorStop(0, rgba(PHOTON_HOT, 0));
+  photon.addColorStop(0.38, rgba(PHOTON_HOT, 0.95));
+  photon.addColorStop(0.6, rgba(PHOTON_MAGENTA, 0.85));
+  photon.addColorStop(0.85, rgba(PHOTON_MAGENTA, 0.35));
+  photon.addColorStop(1, rgba(PHOTON_MAGENTA, 0));
   ctx.fillStyle = photon;
   ctx.beginPath();
-  ctx.arc(cx, cy, r * 1.16, 0, Math.PI * 2);
+  ctx.arc(cx, cy, r * 1.18, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = "#000000";
@@ -194,18 +270,23 @@ export interface BlackHoleImageOptions {
   height: number;
   /** Any integer — the same seed always produces the same artwork. */
   seed: number;
-  /** Small warm accent on the disk's bright side. Off by default — the
-   * palette is otherwise strictly violet/blue/grey, no amber blobs. */
-  warmHighlight?: boolean;
+  /** Shadow radius as a fraction of min(width, height). The caller works
+   * this out from how big SculptureHero actually renders the image (via
+   * `sculptureScale`/`mobileSculptureScale`) so the shadow lands at a
+   * specific fraction of the hero's own height on screen — that on-screen
+   * target doesn't translate to one fixed fraction of the source image,
+   * since the desktop and mobile images end up displayed at different
+   * scale factors. Defaults to the proportions this was designed at. */
+  shadowRadiusFraction?: number;
 }
 
 /** Draws the full scene and returns a `data:image/png;base64,...` URL.
- * Must run client-side (uses the Canvas 2D API). */
+ * Must run client-side (uses the Canvas 2D API and `filter: blur()`). */
 export function generateBlackHoleImage({
   width,
   height,
   seed,
-  warmHighlight = false,
+  shadowRadiusFraction = 0.11,
 }: BlackHoleImageOptions): string {
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -216,25 +297,41 @@ export function generateBlackHoleImage({
   const rand = mulberry32(seed);
   const vertical = height > width;
   const cx = width * 0.5;
-  const cy = height * (vertical ? 0.5 : 0.48);
+  const cy = height * 0.5;
   const unit = Math.min(width, height);
 
   // Background stays fully transparent — never filled — so the PNG keys by
   // alpha instead of a flat color.
-  drawStars(ctx, width, height, rand, Math.round(unit * 0.07));
+  drawStars(ctx, width, height, rand, Math.round(unit * 0.06));
 
-  const horizonR = unit * 0.11;
-  drawLensingHalo(ctx, cx, cy, unit * 0.2, horizonR * 1.05);
-  drawAccretionDisk(
+  const horizonR = unit * shadowRadiusFraction;
+  const diskOuter = unit * 0.54;
+  const diskInner = horizonR * 1.25;
+  // Relative to horizonR, not a fixed unit fraction, so the halo band stays
+  // proportionally the same thickness regardless of shadowRadiusFraction.
+  const haloOuter = horizonR * 1.7;
+
+  // A light blur softens every gradient shape drawn after it's applied —
+  // smooth bands rather than hard-edged or stippled shapes.
+  ctx.filter = `blur(${Math.max(1, unit * 0.003)}px)`;
+  drawLensedHalo(ctx, cx, cy, haloOuter, horizonR * 1.05);
+  drawOuterDisk(ctx, cx, cy, diskOuter, diskInner, vertical, rand);
+  ctx.filter = "none";
+
+  drawPhotonRingAndHorizon(ctx, cx, cy, horizonR);
+  drawFrontDiskSlice(
     ctx,
     cx,
     cy,
-    unit * 0.34,
-    horizonR * 1.3,
+    diskOuter,
+    diskInner,
     vertical,
-    warmHighlight,
+    horizonR,
+    rand,
   );
-  drawPhotonRingAndHorizon(ctx, cx, cy, horizonR);
+
+  // A second, sparser star pass on top reads as foreground dust.
+  drawStars(ctx, width, height, rand, Math.round(unit * 0.015));
 
   return canvas.toDataURL("image/png");
 }

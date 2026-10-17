@@ -1592,7 +1592,11 @@ export default function SculptureHero(props: SculptureHeroProps) {
   const contentRef = React.useRef<HTMLDivElement>(null);
   const backdropRef = React.useRef<HTMLDivElement>(null);
   const engineRef = React.useRef<LiquidEngine | null>(null);
-  const aspectRef = React.useRef(1983 / 793);
+  // 1600/900: this repo's own desktop source image aspect, not the
+  // registry's generic default (1983/793) — closer to right on first paint,
+  // before the real <img> has loaded and corrected it, which cuts down one
+  // of the layout-shift jumps relayout() causes while the hero settles.
+  const aspectRef = React.useRef(1600 / 900);
   const [isTouch, setIsTouch] = React.useState(false);
 
   const layout = React.useRef({
@@ -1840,7 +1844,6 @@ export default function SculptureHero(props: SculptureHeroProps) {
             delete root.dataset.swap;
           };
           engine.setImage(image);
-          relayout();
         } catch {
           root.dataset.gl = "off";
         }
@@ -1888,7 +1891,13 @@ export default function SculptureHero(props: SculptureHeroProps) {
     imgBgRgb,
   ]);
 
-  React.useEffect(() => {
+  // useLayoutEffect, not useEffect: this is what gives .sh-fallback its
+  // very first size/position. A regular effect runs after the browser has
+  // already painted once (with the img at its default, unsized "auto"
+  // intrinsic box — huge, since it's absolutely positioned with
+  // max-width:none), so the correction became a user-visible, CLS-counted
+  // jump. Running synchronously before paint avoids that initial frame.
+  React.useLayoutEffect(() => {
     relayout();
   }, [sculptureScale, mobileSculptureScale, sculptureX, sculptureY, relayout]);
 

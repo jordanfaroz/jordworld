@@ -66,12 +66,32 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
     mobile TBT — shader-compile cost under this dev machine's software GL
     rendering — for a subtle effect, so it was pulled back out; the ambient
     drift visible at rest is `ambientField`'s existing turbulence only.
-    `particleDensity` is 0.8, not the 1.8–2 a later brief asked for — pushing
-    it that high measurably cost real Lighthouse mobile TBT in local
-    testing, so it was capped well below that to stay inside the
-    performance budget. See `src/components/hero.tsx` for both trade-offs
-    in context, including the `min-h-[100svh]` note explaining a CLS fix: the
-    wrapper around `StaticHero`/`SculptureHero` needs a fixed height matching
-    SculptureHero's own `height="100svh"`, or the swap between them (and the
-    gap while its `next/dynamic(ssr:false)` chunk loads) causes a large,
-    measured layout shift in everything below the hero.
+    `particleDensity` was first capped at a flat 0.8 (well below the 1.8–2 a
+    brief asked for, since pushing it that high measurably cost real
+    Lighthouse mobile TBT), then made adaptive instead — see
+    `detectParticleDensity()` in `src/components/hero.tsx`, tiered by rough
+    device capability and only read after mount (browser-only APIs). A later
+    brief also switched `restStyle` from `"particles"` to `"image"`: the
+    crisp generated image shows at rest, particles only where the pointer
+    disturbs it. Two more small hand-edits support that redesign:
+    `aspectRef`'s initial value (used before the real `<img>` has loaded) was
+    changed from the registry default (1983/793) to this repo's own desktop
+    source image aspect (1600/900), and a second, redundant `relayout()`
+    call after `engine.setImage()` was removed — both were contributing to a
+    measured, if smaller, CLS hit from `.sh-fallback` resizing after first
+    paint; the `[sculptureScale, ...]` effect that gives it its first
+    size/position was also changed from `useEffect` to `useLayoutEffect` for
+    the same reason (run before paint, not after). See `src/components/hero.tsx`
+    for all of these trade-offs in context, including the `min-h-[100svh]`
+    note explaining the main CLS fix: the wrapper around
+    `StaticHero`/`SculptureHero` needs a fixed height matching SculptureHero's
+    own `height="100svh"`, or the swap between them (and the gap while its
+    `next/dynamic(ssr:false)` chunk loads) causes a large, measured layout
+    shift in everything below the hero. Also note `loadFonts={false}` there,
+    paired with `headingFont`/`accentFont` pointing at `var(--font-sans)` and
+    a new `var(--font-instrument-serif)` set up in `src/app/layout.tsx` via
+    `next/font/google` — the component's own default (`loadFonts: true`)
+    injects a runtime Google Fonts `<link>` with `display=swap`, which was a
+    real, measured CLS source (the headline reflowing once the font swap
+    landed); the site already loads "Geist" through `next/font` anyway, so
+    this also avoids fetching it a second time.
