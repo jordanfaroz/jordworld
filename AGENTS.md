@@ -47,4 +47,31 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
     invalid JS. `showCredit` stays `true` — the platform's own terms require
     visible attribution to the original author for a derived component like
     this one. See `src/components/hero.tsx` for how it's wired up (a
-    procedurally generated black-hole image, no stock photo or CDN asset)
+    procedurally generated black-hole image, no stock photo or CDN asset).
+    Further hand-edits for the Gargantua-style redesign: `buildParticles()`
+    spawns particles with probability proportional to source alpha (no hard
+    threshold) and carries that alpha into the colour texture's own alpha
+    channel, read back in `PART_VS` as per-particle opacity; the particle
+    draw pass blends additively (`gl.ONE, gl.ONE`) instead of over, dimmed by
+    a `*0.3` factor in `PART_VS` so a denser particle count doesn't clip
+    straight to white. `intro` is left `false` for this hero specifically —
+    with it on, the curl-noise intro scatter's residual velocity gets frozen
+    into the idle render once the engine stops simulating (a latent bug: the
+    idle path stops updating `st.zw` but `streaks` keeps using whatever
+    value was last there), which read as a permanent stray "flame"
+    distorting the shape. The backdrop word's opacity (`.sh-backdrop`
+    color-mix percentage) was also turned down further, from 5% to 2%. A
+    bounded "ambient orbital sway" was prototyped in `PART_VS` (tangential
+    drift around the image centre) but measurably added ~1.3s of Lighthouse
+    mobile TBT — shader-compile cost under this dev machine's software GL
+    rendering — for a subtle effect, so it was pulled back out; the ambient
+    drift visible at rest is `ambientField`'s existing turbulence only.
+    `particleDensity` is 0.8, not the 1.8–2 a later brief asked for — pushing
+    it that high measurably cost real Lighthouse mobile TBT in local
+    testing, so it was capped well below that to stay inside the
+    performance budget. See `src/components/hero.tsx` for both trade-offs
+    in context, including the `min-h-[100svh]` note explaining a CLS fix: the
+    wrapper around `StaticHero`/`SculptureHero` needs a fixed height matching
+    SculptureHero's own `height="100svh"`, or the swap between them (and the
+    gap while its `next/dynamic(ssr:false)` chunk loads) causes a large,
+    measured layout shift in everything below the hero.

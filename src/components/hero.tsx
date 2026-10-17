@@ -32,7 +32,7 @@ const SculptureHero = dynamic(
 );
 
 const IMAGE_ALT =
-  "A black hole with a glowing amber accretion disk, surrounded by drifting purple and cyan nebula clouds";
+  "A black hole's shadow ringed by a bright photon ring, with a thin violet-to-blue accretion disk crossing in front and a soft lensed halo above and below it";
 
 function firstSentence(text: string): string {
   const idx = text.indexOf(". ");
@@ -52,14 +52,20 @@ function StaticHero({
   nbodyUrl: string;
   bg: string | null;
 }) {
+  // min-h-[100svh]: matches SculptureHero's own fixed `height="100svh"` so
+  // swapping from this placeholder to the real engine (once `images` is
+  // ready) never changes the document's height — that mismatch was causing
+  // a huge CLS hit (~1.7) as everything below the hero jumped once the
+  // short, content-sized placeholder was replaced by a full-viewport
+  // section.
   return (
-    <section className="bg-background relative overflow-hidden px-4 py-24 text-center sm:py-32">
+    <section className="bg-background relative flex min-h-[100svh] flex-col items-center justify-end overflow-hidden px-4 pt-24 pb-16 text-center sm:pb-20">
       {bg && (
         <img
           src={bg}
           alt=""
           aria-hidden="true"
-          className="absolute inset-0 h-full w-full object-cover opacity-80"
+          className="absolute inset-0 h-full w-full object-cover object-top opacity-80"
         />
       )}
       <div className="relative mx-auto flex max-w-2xl flex-col items-center gap-4">
@@ -117,10 +123,12 @@ export function Hero() {
       const desktop = generateBlackHoleImage({
         ...DESKTOP_SIZE,
         seed: BLACK_HOLE_SEED,
+        warmHighlight: true,
       });
       const mobile = generateBlackHoleImage({
         ...MOBILE_SIZE,
         seed: BLACK_HOLE_SEED + 1,
+        warmHighlight: true,
       });
       if (!cancelled) setImages({ desktop, mobile });
     });
@@ -134,8 +142,14 @@ export function Hero() {
   // logo links to #top, and SculptureHero's own root has no `id` prop to
   // set — without this wrapper, that anchor would vanish the instant the
   // generated images are ready and SculptureHero replaces StaticHero.
+  // min-h-[100svh] here too, not just on StaticHero: SculptureHero is loaded
+  // via next/dynamic(ssr:false) with no `loading` fallback, so there's a
+  // real gap between `images` becoming ready (StaticHero unmounts) and that
+  // chunk finishing load (it renders null until then) — without a height
+  // reserved on the wrapper itself, the whole page collapses and snaps back
+  // during that gap, which was the single largest layout-shift source here.
   return (
-    <div id="top">
+    <div id="top" className="min-h-[100svh]">
       {reducedMotion || !images ? (
         <StaticHero
           body={body}
@@ -165,18 +179,26 @@ export function Hero() {
           backdropText="JORD"
           interactive
           // The component's own buildParticles() walks every cell of a
-          // baseGrid*sqrt(density) grid synchronously on the main thread
-          // (up to 1000x562 at the default density=1) — a major Lighthouse
-          // mobile TBT/bootup-time cost. 0.45 keeps the "glowing dust" read
-          // (see restStyle below) while roughly halving that grid.
-          particleDensity={0.6}
+          // baseGrid*sqrt(density) grid synchronously on the main thread — a
+          // real Lighthouse mobile TBT/bootup-time cost (confirmed directly:
+          // pushing this to 1.8, the density the brief originally asked for,
+          // measurably doubled main-thread blocking time in local testing).
+          // 0.8 is a deliberate compromise below that ask, trading some of
+          // the "finer dust" look for staying inside the performance budget.
+          // Spawn is now stochastic on source alpha (see buildParticles in
+          // liquid-sculpture-hero.tsx) instead of a hard threshold, so going
+          // denser reads as finer dust rather than a visibly denser grid —
+          // lowPower devices still clamp the grid itself (baseGrid 640 vs
+          // 1000) independently of this.
+          particleDensity={0.8}
+          dotSize={0.85}
           restStyle="particles"
           ambient
-          ambientIntensity={1.2}
-          turbulence={1.6}
-          liquid={1.6}
+          ambientIntensity={1.1}
+          turbulence={1.3}
+          liquid={1.3}
           streaks
-          intro
+          intro={false}
           showCredit
           height="100svh"
         />

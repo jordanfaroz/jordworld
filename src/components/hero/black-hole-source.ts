@@ -4,16 +4,36 @@
  * or pulled from a CDN — nothing here is a licensed/sourced image, and the
  * seeded noise makes every visitor see the exact same artwork.
  *
+ * "Gargantua" style: a thin, nearly edge-on accretion disk crossing in front
+ * of a pure-black shadow, with a soft circular lensing halo showing through
+ * above and below it (the bent far side of the disk) and a crisp bright
+ * photon ring hugging the shadow's own edge. The desktop image lays the disk
+ * out horizontally; the mobile image is the same scene with the disk
+ * vertical, so it fills a portrait frame — driven automatically by whichever
+ * of width/height is larger, not a separate flag.
+ *
  * Transparent background (not a flat color): SculptureHero auto-detects an
  * image as a "cutout" when enough of it is transparent and keys by alpha,
  * which is cleaner than color-distance keying against a flat `imageBackground`
- * and needs no extra prop.
+ * and needs no extra prop. The site's own navy (#0b1020) shows through from
+ * the `background` prop passed to SculptureHero, not from this PNG.
  */
 
-const PURPLE = [76, 29, 149] as const; // #4c1d95
-const MAGENTA = [192, 38, 211] as const; // #c026d3
-const CYAN = [34, 211, 238] as const; // #22d3ee
-const AMBER = [251, 191, 36] as const; // #fbbf24 — matches the site's --amber token
+// Halo / inner-disk violets
+const HALO_INNER = [196, 181, 253] as const; // #c4b5fd
+const HALO_MID = [139, 92, 246] as const; // #8b5cf6
+const HALO_DEEP = [109, 40, 217] as const; // #6d28d9
+// Outer-disk blues fading to cool grey
+const BLUE_MID = [37, 99, 235] as const; // #2563eb
+const BLUE_LIGHT = [96, 165, 250] as const; // #60a5fa
+const GREY_1 = [51, 65, 85] as const; // #334155
+const GREY_2 = [100, 116, 139] as const; // #64748b
+// Photon ring: near-white with a blue tint
+const PHOTON_WHITE = [255, 255, 255] as const;
+const PHOTON_TINT = [199, 210, 254] as const; // #c7d2fe
+// Reserved for the optional "warm highlight" variant only — never used by
+// default, and never for clouds/blobs.
+const WARM = [251, 191, 36] as const; // #fbbf24
 
 /** Mulberry32 — same tiny deterministic PRNG used elsewhere in this repo
  * (src/world/map.ts, EnterWorldIntro.tsx) for seeded-but-reproducible output. */
@@ -28,68 +48,11 @@ function mulberry32(seed: number) {
   };
 }
 
-/** Deterministic 2D value noise (seeded lattice + bilinear interpolation),
- * with a small fbm wrapper for layered "fractal" cloud detail. */
-function makeNoise2D(seed: number) {
-  const size = 256;
-  const mask = size - 1;
-  const rand = mulberry32(seed);
-  const lattice = new Float32Array(size * size);
-  for (let i = 0; i < lattice.length; i++) lattice[i] = rand();
-
-  const at = (x: number, y: number) => lattice[(y & mask) * size + (x & mask)];
-  const fade = (t: number) => t * t * t * (t * (t * 6 - 15) + 10);
-
-  return function noise2D(x: number, y: number): number {
-    const x0 = Math.floor(x);
-    const y0 = Math.floor(y);
-    const tx = fade(x - x0);
-    const ty = fade(y - y0);
-    const a = at(x0, y0);
-    const b = at(x0 + 1, y0);
-    const c = at(x0, y0 + 1);
-    const d = at(x0 + 1, y0 + 1);
-    const ab = a + (b - a) * tx;
-    const cd = c + (d - c) * tx;
-    return ab + (cd - ab) * ty;
-  };
+function rgba(c: readonly [number, number, number], a: number): string {
+  return `rgba(${c[0]},${c[1]},${c[2]},${a})`;
 }
 
-function fbm(
-  noise: (x: number, y: number) => number,
-  x: number,
-  y: number,
-  octaves: number,
-): number {
-  let sum = 0;
-  let amp = 0.5;
-  let freq = 1;
-  let max = 0;
-  for (let o = 0; o < octaves; o++) {
-    sum += noise(x * freq, y * freq) * amp;
-    max += amp;
-    amp *= 0.5;
-    freq *= 2.1;
-  }
-  return sum / max;
-}
-
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
-}
-
-function mixColor(
-  c1: readonly [number, number, number],
-  c2: readonly [number, number, number],
-  t: number,
-) {
-  return [
-    lerp(c1[0], c2[0], t),
-    lerp(c1[1], c2[1], t),
-    lerp(c1[2], c2[2], t),
-  ] as const;
-}
-
+/** Sparse background stars — small specks, no clumps, a few brighter twinkles. */
 function drawStars(
   ctx: CanvasRenderingContext2D,
   w: number,
@@ -100,8 +63,9 @@ function drawStars(
   for (let i = 0; i < count; i++) {
     const x = rand() * w;
     const y = rand() * h;
-    const r = 0.4 + rand() * 1.3;
-    const a = 0.2 + rand() * 0.55;
+    const bright = rand() > 0.92;
+    const r = bright ? 0.9 + rand() * 1.1 : 0.35 + rand() * 0.6;
+    const a = bright ? 0.6 + rand() * 0.35 : 0.15 + rand() * 0.35;
     ctx.beginPath();
     ctx.fillStyle = `rgba(255,255,255,${a})`;
     ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -109,164 +73,116 @@ function drawStars(
   }
 }
 
-/** Layered fractal-noise clouds in purple/magenta/cyan/amber, fading to
- * transparent at the canvas edges so the cutout reads cleanly.
- *
- * Rendered onto a small offscreen canvas (long edge ~170px) via a single
- * ImageData write, then scaled up with drawImage — not one fillRect per
- * sample point on the full-size canvas. The first version did ~40,000
- * fillRect calls with a fillStyle change each time on the real (1600x900)
- * canvas, which single-handedly blew the Lighthouse mobile performance
- * budget (7+ seconds of main-thread work — this is a one-time generation,
- * but it still has to happen before the hero is interactive). The low-res
- * pass is ~50x fewer samples, and the upscale's bilinear smoothing softens
- * the cloud edges, which reads better as diffuse gas than the old grid
- * anyway — faster and better looking. */
-function drawNebula(
+/** Soft circular lensing halo around the shadow — the bent light from the far
+ * side of the disk, reading as a glow that frames the shadow above and below
+ * wherever the edge-on disk band doesn't cover it. Brighter near the hole,
+ * violet fading through blue to grey. */
+function drawLensingHalo(
   ctx: CanvasRenderingContext2D,
-  w: number,
-  h: number,
   cx: number,
   cy: number,
-  noise: (x: number, y: number) => number,
+  rOuter: number,
+  rInner: number,
 ) {
-  const longEdge = 170;
-  const lw = w >= h ? longEdge : Math.round((longEdge * w) / h);
-  const lh = w >= h ? Math.round((longEdge * h) / w) : longEdge;
-  const small = document.createElement("canvas");
-  small.width = lw;
-  small.height = lh;
-  const sctx = small.getContext("2d")!;
-  const image = sctx.createImageData(lw, lh);
-  const data = image.data;
-
-  const palette = [PURPLE, MAGENTA, CYAN, AMBER, AMBER] as const; // amber weighted lightly
-  const scale = 3.2 / Math.min(w, h);
-  const edge = Math.min(w, h) * 0.52;
-  const toFull = w / lw; // small-canvas px -> full-canvas px, for the radial/vignette falloff
-
-  for (let ly = 0; ly < lh; ly++) {
-    for (let lx = 0; lx < lw; lx++) {
-      const x = lx * toFull;
-      const y = ly * toFull;
-      const n = fbm(noise, x * scale, y * scale, 3);
-      const n2 = fbm(noise, x * scale * 2.3 + 11.7, y * scale * 2.3 + 4.2, 2);
-      const density = Math.max(0, n * 0.7 + n2 * 0.3 - 0.32);
-
-      const i = (ly * lw + lx) * 4;
-      if (density <= 0) continue;
-
-      const d = Math.hypot(x - cx, y - cy);
-      const radial = 1 - Math.min(1, d / (Math.max(w, h) * 0.75));
-      const vignette = Math.max(
-        0,
-        Math.min(1, Math.min(x, w - x, y, h - y) / (edge * 0.4)),
-      );
-      const alpha =
-        Math.min(0.5, density * 0.9) * (0.35 + radial * 0.65) * vignette;
-      if (alpha <= 0.004) continue;
-
-      const paletteT =
-        (noise(x * scale * 0.6 + 50, y * scale * 0.6 + 50) + 1) / 2;
-      const idx = Math.min(
-        palette.length - 1,
-        Math.floor(paletteT * palette.length),
-      );
-      const next = palette[Math.min(palette.length - 1, idx + 1)];
-      const [r, g, b] = mixColor(
-        palette[idx],
-        next,
-        paletteT * palette.length - idx,
-      );
-
-      data[i] = r;
-      data[i + 1] = g;
-      data[i + 2] = b;
-      data[i + 3] = alpha * 255;
-    }
-  }
-
-  sctx.putImageData(image, 0, 0);
-  ctx.imageSmoothingEnabled = true;
-  ctx.imageSmoothingQuality = "high";
-  ctx.drawImage(small, 0, 0, lw, lh, 0, 0, w, h);
+  const g = ctx.createRadialGradient(cx, cy, rInner * 0.7, cx, cy, rOuter);
+  g.addColorStop(0, rgba(HALO_INNER, 0));
+  g.addColorStop(0.1, rgba(HALO_INNER, 0.85));
+  g.addColorStop(0.32, rgba(HALO_MID, 0.5));
+  g.addColorStop(0.58, rgba(BLUE_MID, 0.28));
+  g.addColorStop(0.82, rgba(GREY_1, 0.12));
+  g.addColorStop(1, rgba(GREY_1, 0));
+  ctx.fillStyle = g;
+  ctx.beginPath();
+  ctx.arc(cx, cy, rOuter, 0, Math.PI * 2);
+  ctx.arc(cx, cy, rInner * 0.55, 0, Math.PI * 2, true);
+  ctx.fill("evenodd");
 }
 
-/** Tilted elliptical accretion disk with doppler beaming (one side brighter)
- * and soft radial falloff, drawn by scaling the context so a circular
- * gradient becomes an ellipse. */
+/** Thin, nearly edge-on accretion disk crossing in front of the shadow, with
+ * doppler beaming (one side noticeably brighter). `vertical` rotates the
+ * whole band 90° for the mobile/portrait frame — same gradients, same
+ * doppler side, just turned on its axis. `warmHighlight` adds a small warm
+ * accent on the bright side only (variant C). */
 function drawAccretionDisk(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   rOuter: number,
   rInner: number,
-  tiltRad: number,
+  vertical: boolean,
+  warmHighlight: boolean,
 ) {
-  const squash = 0.4; // vertical compression before rotation, for the ~15deg tilt look
+  const squash = 0.12; // thin, nearly edge-on
 
   ctx.save();
   ctx.translate(cx, cy);
-  ctx.rotate(tiltRad);
+  if (vertical) ctx.rotate(Math.PI / 2);
   ctx.scale(1, squash);
 
-  // Base ring: warm amber/orange core fading to white at the inner edge and
-  // transparent past the outer edge.
-  const ring = ctx.createRadialGradient(0, 0, rInner * 0.85, 0, 0, rOuter);
-  ring.addColorStop(0, "rgba(255,255,255,0.95)");
-  ring.addColorStop(0.15, "rgba(255,226,170,0.9)");
-  ring.addColorStop(0.45, "rgba(245,158,11,0.75)");
-  ring.addColorStop(0.8, "rgba(194,80,20,0.35)");
-  ring.addColorStop(1, "rgba(120,40,10,0)");
+  const ring = ctx.createRadialGradient(0, 0, rInner * 0.8, 0, 0, rOuter);
+  ring.addColorStop(0, rgba(HALO_INNER, 0.95));
+  ring.addColorStop(0.16, rgba(HALO_MID, 0.85));
+  ring.addColorStop(0.36, rgba(HALO_DEEP, 0.6));
+  ring.addColorStop(0.6, rgba(BLUE_MID, 0.45));
+  ring.addColorStop(0.82, rgba(BLUE_LIGHT, 0.25));
+  ring.addColorStop(1, rgba(GREY_2, 0));
   ctx.fillStyle = ring;
   ctx.beginPath();
   ctx.arc(0, 0, rOuter, 0, Math.PI * 2);
-  ctx.arc(0, 0, rInner * 0.6, 0, Math.PI * 2, true);
+  ctx.arc(0, 0, rInner * 0.55, 0, Math.PI * 2, true);
   ctx.fill("evenodd");
 
-  // Doppler beaming: the side of the disk moving toward the viewer reads
-  // brighter — an off-center "lighter" blend standing in for relativistic
-  // beaming without actually ray-tracing it.
+  // Doppler beaming: the approaching side of the disk reads brighter.
   ctx.globalCompositeOperation = "lighter";
-  const beam = ctx.createRadialGradient(
-    -rOuter * 0.55,
-    0,
-    0,
-    -rOuter * 0.55,
-    0,
-    rOuter * 0.95,
-  );
-  beam.addColorStop(0, "rgba(255,255,255,0.55)");
-  beam.addColorStop(0.5, "rgba(255,210,140,0.22)");
-  beam.addColorStop(1, "rgba(255,210,140,0)");
+  const beamX = rOuter * 0.55;
+  const beam = ctx.createRadialGradient(beamX, 0, 0, beamX, 0, rOuter * 0.9);
+  beam.addColorStop(0, rgba(PHOTON_WHITE, 0.55));
+  beam.addColorStop(0.45, rgba(HALO_INNER, 0.28));
+  beam.addColorStop(1, rgba(HALO_INNER, 0));
   ctx.fillStyle = beam;
   ctx.beginPath();
   ctx.arc(0, 0, rOuter, 0, Math.PI * 2);
   ctx.fill();
 
+  if (warmHighlight) {
+    const warm = ctx.createRadialGradient(
+      beamX * 0.8,
+      0,
+      0,
+      beamX * 0.8,
+      0,
+      rOuter * 0.4,
+    );
+    warm.addColorStop(0, rgba(WARM, 0.2));
+    warm.addColorStop(1, rgba(WARM, 0));
+    ctx.fillStyle = warm;
+    ctx.beginPath();
+    ctx.arc(0, 0, rOuter, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
   ctx.restore();
 }
 
-function drawEventHorizonAndPhotonRing(
+/** The sharpest element in the scene: a thin, crisp, bright ring hugging the
+ * shadow directly, white at its hottest cooling to a pale blue tint, with
+ * the pure-black event horizon on top. */
+function drawPhotonRingAndHorizon(
   ctx: CanvasRenderingContext2D,
   cx: number,
   cy: number,
   r: number,
 ) {
-  // Photon ring: a thin bright annulus just outside the horizon, white
-  // hottest at the inner edge cooling to pale amber at the outer edge.
-  const photon = ctx.createRadialGradient(cx, cy, r * 0.92, cx, cy, r * 1.22);
-  photon.addColorStop(0, "rgba(255,255,255,0)");
-  photon.addColorStop(0.35, "rgba(255,255,255,0.95)");
-  photon.addColorStop(0.65, "rgba(255,221,170,0.55)");
-  photon.addColorStop(1, "rgba(255,221,170,0)");
+  const photon = ctx.createRadialGradient(cx, cy, r * 0.9, cx, cy, r * 1.16);
+  photon.addColorStop(0, rgba(PHOTON_WHITE, 0));
+  photon.addColorStop(0.4, rgba(PHOTON_WHITE, 0.98));
+  photon.addColorStop(0.68, rgba(PHOTON_TINT, 0.65));
+  photon.addColorStop(1, rgba(PHOTON_TINT, 0));
   ctx.fillStyle = photon;
   ctx.beginPath();
-  ctx.arc(cx, cy, r * 1.22, 0, Math.PI * 2);
+  ctx.arc(cx, cy, r * 1.16, 0, Math.PI * 2);
   ctx.fill();
 
-  // Pure-black event horizon on top, slightly smaller than the photon ring's
-  // inner edge so the ring reads as a visible rim around it.
   ctx.fillStyle = "#000000";
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -278,6 +194,9 @@ export interface BlackHoleImageOptions {
   height: number;
   /** Any integer — the same seed always produces the same artwork. */
   seed: number;
+  /** Small warm accent on the disk's bright side. Off by default — the
+   * palette is otherwise strictly violet/blue/grey, no amber blobs. */
+  warmHighlight?: boolean;
 }
 
 /** Draws the full scene and returns a `data:image/png;base64,...` URL.
@@ -286,6 +205,7 @@ export function generateBlackHoleImage({
   width,
   height,
   seed,
+  warmHighlight = false,
 }: BlackHoleImageOptions): string {
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -294,23 +214,27 @@ export function generateBlackHoleImage({
   if (!ctx) return "";
 
   const rand = mulberry32(seed);
-  const noise = makeNoise2D(seed + 1);
-
+  const vertical = height > width;
   const cx = width * 0.5;
-  const cy = height * 0.48;
+  const cy = height * (vertical ? 0.5 : 0.48);
   const unit = Math.min(width, height);
 
   // Background stays fully transparent — never filled — so the PNG keys by
   // alpha instead of a flat color.
-  drawStars(ctx, width, height, rand, Math.round(unit * 0.35));
-  drawNebula(ctx, width, height, cx, cy, noise);
-  // A second, denser star pass on top of the nebula reads as foreground dust.
-  drawStars(ctx, width, height, rand, Math.round(unit * 0.12));
+  drawStars(ctx, width, height, rand, Math.round(unit * 0.07));
 
-  const rOuter = unit * 0.3;
-  const rInner = unit * 0.1;
-  drawAccretionDisk(ctx, cx, cy, rOuter, rInner, (15 * Math.PI) / 180);
-  drawEventHorizonAndPhotonRing(ctx, cx, cy, unit * 0.09);
+  const horizonR = unit * 0.11;
+  drawLensingHalo(ctx, cx, cy, unit * 0.2, horizonR * 1.05);
+  drawAccretionDisk(
+    ctx,
+    cx,
+    cy,
+    unit * 0.34,
+    horizonR * 1.3,
+    vertical,
+    warmHighlight,
+  );
+  drawPhotonRingAndHorizon(ctx, cx, cy, horizonR);
 
   return canvas.toDataURL("image/png");
 }

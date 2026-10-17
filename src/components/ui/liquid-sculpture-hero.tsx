@@ -263,7 +263,12 @@ void main(){
   float glint = smoothstep(2.0, 16.0, sp);
   col = mix(col, min(col*1.18 + vec3(0.07,0.075,0.085), vec3(1.0)), glint*0.75);
   vCol = col;
-  vA = a;
+  // Additive blending sums every overlapping particle, so without this the
+  // dense core (many near-opaque dots stacked close together) clips to
+  // solid white within a few dozen overlaps. Dimming each particle keeps
+  // bright areas reading as "more dots glowing together" instead of a flat
+  // white blob, while still looking brighter than sparse areas.
+  vA = a*cl.a*0.3;
 }
 `;
 
@@ -682,18 +687,22 @@ class LiquidEngine {
         const r = data[i] / 255;
         const g = data[i + 1] / 255;
         const b = data[i + 2] / 255;
+        // Spawn probability is proportional to the source pixel's own alpha
+        // (or colour-distance, for flat-background images) — no hard cutoff,
+        // so faint dust is just rare rather than absent, which reads as
+        // smoother/finer than a hard-threshold grid.
+        let a: number;
         if (this.alphaMode) {
-          const a = data[i + 3] / 255;
-          if (a < 0.12) continue;
-          if (a < 0.5 && Math.random() > a * 2) continue;
+          a = data[i + 3] / 255;
+          if (Math.random() > a) continue;
         } else {
           const dev = Math.hypot(
             r - this.imgBg[0],
             g - this.imgBg[1],
             b - this.imgBg[2],
           );
-          if (dev < 0.03) continue;
-          if (dev < 0.07 && Math.random() > (dev - 0.03) / 0.04) continue;
+          a = clamp(dev / 0.07, 0, 1);
+          if (Math.random() > a) continue;
         }
         const jx = (Math.random() - 0.5) * 0.6;
         const jy = (Math.random() - 0.5) * 0.6;
@@ -701,9 +710,12 @@ class LiquidEngine {
           (x + 0.5 + jx) / gw,
           (y + 0.5 + jy) / gh,
           Math.random(),
-          0.85 + Math.random() * 0.3,
+          0.7 + Math.random() * 0.6,
         );
-        col.push(data[i], data[i + 1], data[i + 2], 255);
+        // Alpha carried in the colour texture's own alpha channel (was a
+        // hardcoded 255) so the particle shader can read it back as
+        // per-particle opacity, matching the source image exactly.
+        col.push(data[i], data[i + 1], data[i + 2], Math.round(a * 255));
       }
     }
     const n = home.length / 4;
@@ -1101,7 +1113,9 @@ class LiquidEngine {
     const P = this.pPart;
     gl.useProgram(P.p);
     gl.enable(gl.BLEND);
-    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    // Additive: overlapping dust glows brighter instead of just covering,
+    // which reads as the disk/halo material being luminous.
+    gl.blendFunc(gl.ONE, gl.ONE);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.stateTex[this.stateIdx]);
     gl.uniform1i(P.u.uState, 0);
@@ -1351,7 +1365,7 @@ const CSS = `
 .sh-root[data-swap="1"] .sh-canvas{opacity:0;transition-duration:.25s}
 .sh-root[data-swap="1"] .sh-fallback{opacity:0;transition-duration:.25s}
 .sh-backdrop{position:absolute;left:50%;z-index:0;transform:translate(-50%,-50%);white-space:nowrap;pointer-events:none;user-select:none;
-  font-family:var(--sh-head);font-weight:600;letter-spacing:-.06em;line-height:.8;color:color-mix(in srgb,var(--sh-fg) 5%,transparent)}
+  font-family:var(--sh-head);font-weight:600;letter-spacing:-.06em;line-height:.8;color:color-mix(in srgb,var(--sh-fg) 2%,transparent)}
 .sh-nav{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:24px;
   padding:26px clamp(20px,3.2cqw,48px) 0}
 .sh-brand{font-family:var(--sh-head);font-weight:600;font-size:17px;letter-spacing:-.02em;color:inherit;text-decoration:none}
@@ -1910,6 +1924,8 @@ export default function SculptureHero(props: SculptureHeroProps) {
           alt=""
           crossOrigin="anonymous"
           draggable={false}
+          width={1600}
+          height={900}
         />
       </div>
       <span
