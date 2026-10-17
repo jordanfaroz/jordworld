@@ -191,7 +191,7 @@ export function Hero() {
           mobileDarkSrc={images.mobile}
           imageAlt={IMAGE_ALT}
           showNav={false}
-          eyebrow="JORD WORLD"
+          eyebrow=""
           headline={"I build worlds,\nsimulations and tools."}
           headlineAccent="simulations and tools."
           body={body}
