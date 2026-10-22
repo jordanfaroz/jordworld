@@ -43,13 +43,28 @@ function firstSentence(text: string): string {
  * crisp generated image shows at rest, so this only costs real work where
  * the pointer is actively stirring it. Tiered by rough device capability,
  * detected client-side once on mount (navigator/matchMedia aren't available
- * during SSR). */
+ * during SSR).
+ *
+ * iOS needs its own check: WebKit clamps `hardwareConcurrency` on iPhone (to
+ * 2–4, an anti-fingerprinting measure) and has no `deviceMemory`, so the
+ * generic test put every iPhone, however new, in the low-end tier. Every
+ * browser on iOS is WebKit (Chrome included), and WebGL2 is on by default
+ * from iOS 15, so the OS version is the usable signal there instead. */
 function detectParticleDensity(): number {
   const nav = navigator as Navigator & { deviceMemory?: number };
+  const coarse = window.matchMedia("(pointer: coarse)").matches;
+  const ios =
+    /iPhone|iPad|iPod/.test(nav.userAgent) ||
+    (nav.platform === "MacIntel" && nav.maxTouchPoints > 1);
+  if (ios) {
+    const m = nav.userAgent.match(/OS (\d+)_\d+(?:_\d+)? like Mac OS X/);
+    const major = m ? Number(m[1]) : 0;
+    // iPadOS reports a desktop UA (no "OS n_n like Mac OS X"): assume recent
+    return major === 0 || major >= 16 ? 1.0 : 0.6;
+  }
   const lowEnd =
     (nav.hardwareConcurrency ?? 8) <= 4 || (nav.deviceMemory ?? 8) <= 4;
   if (lowEnd) return 0.6;
-  const coarse = window.matchMedia("(pointer: coarse)").matches;
   return coarse ? 1.0 : 1.4;
 }
 
@@ -176,7 +191,11 @@ export function Hero() {
   // reserved on the wrapper itself, the whole page collapses and snaps back
   // during that gap, which was the single largest layout-shift source here.
   return (
-    <div id="top" className="min-h-[100svh]">
+    <div
+      id="top"
+      className="min-h-[100svh]"
+      data-particle-density={particleDensity}
+    >
       {reducedMotion || !images ? (
         <StaticHero
           body={body}
@@ -198,7 +217,7 @@ export function Hero() {
           primaryCta={{ label: "Play N-Body", href: nbodyUrl }}
           secondaryCta={{ label: "Enter World", href: "/" }}
           hint="Stir the dust"
-          hintTouch="Touch to stir"
+          hintTouch="Tap or swipe the black hole"
           background="#0b1020"
           darkBackground="#0b1020"
           theme="dark"
@@ -236,7 +255,15 @@ export function Hero() {
           intro={false}
           showCredit
           sculptureScale={1.15}
-          mobileSculptureScale={1.46}
+          // Phones: 1.07 puts the shadow at ~35% of the screen width (it's
+          // 0.163 × 2 of the image width, see shadowRadiusFraction above),
+          // centred in the top 55% of the hero (the sticky site header sits
+          // above it, not over it), where the lower jet is masked out — so
+          // nothing runs behind the headline. "JORD"/"WORLD" split around
+          // the halo (~0.25 of the image width from the centre each way).
+          mobileSculptureScale={1.07}
+          mobileFadeBottom={0.55}
+          mobileBackdropGap={0.5}
           height="100svh"
         />
       )}

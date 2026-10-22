@@ -105,4 +105,18 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
     long word (`"JORDWORLD"`) can split in two there instead of just
     shrinking to fit one line — `relayout()`'s font-size calc now sizes
     against the widest of however many lines are present, not a single
-    hardcoded text source.
+    hardcoded text source. Mobile/touch hand-edits: the whole hero except
+    `.sh-content`/`.sh-credit` is `user-select:none` +
+    `-webkit-touch-callout:none` and swallows `contextmenu` (iOS long-press
+    was selecting it); a touch only stirs once it moves >10px, a quick tap
+    on the visual fires `LiquidEngine.shockwave()` (an expanding ring fed
+    into both `FLOW_FS` and `SIM_FS` through `uShock*` uniforms, all zero
+    when idle so desktop renders identically), `pointercancel` (browser
+    took a vertical scroll) releases immediately, and a non-passive
+    `touchmove` claims horizontal drags in case WebKit ignores `pan-y`.
+    Three opt-in phone props: `mobileFadeBottom` (mask the sculpture out
+    by that fraction of the hero height and centre it above),
+    `mobileBackdropGap` (split `backdropTextMobile` above/below the
+    sculpture), plus the hint is shown again on phones when fading.
+    `detectParticleDensity()` in `hero.tsx` special-cases iOS, since WebKit
+    clamps `hardwareConcurrency` there and has no `deviceMemory`.

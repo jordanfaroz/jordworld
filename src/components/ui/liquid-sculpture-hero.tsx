@@ -109,6 +109,10 @@ uniform vec2 uSize;
 uniform float uRadius;
 uniform float uPresence;
 uniform float uDecay;
+uniform vec2 uShockPos;
+uniform float uShockR;
+uniform float uShockW;
+uniform float uShock;
 vec2 decV(vec4 c){ return (c.rg*255.0-128.0)/127.0; }
 void main(){
   vec2 v0 = decV(texture(uPrev, vUv));
@@ -123,6 +127,14 @@ void main(){
   float sp = clamp(length(uVel)*2.5, 0.0, 1.0);
   v += uVel*f*0.22;
   p = max(p, f*sp);
+  // tap shockwave: an expanding ring that pushes the wake outward and
+  // energises everything it passes (zero when no shock is running)
+  vec2 sd = (vUv-uShockPos)*uSize;
+  float sl = length(sd);
+  float sr = (sl-uShockR)/uShockW;
+  float ring = exp(-sr*sr)*uShock;
+  v += sd/(sl+1.0)*ring*0.08;
+  p = max(p, ring);
   v *= uDecay;
   p *= uDecay;
   v = sign(v)*max(abs(v)-1.2/127.0, 0.0);
@@ -150,6 +162,10 @@ uniform float uReturn;
 uniform float uTime;
 uniform float uDt;
 uniform float uIntro;
+uniform vec2 uShockPos;
+uniform float uShockR;
+uniform float uShockW;
+uniform float uShock;
 ${NOISE}
 vec2 curl(vec2 p){
   const float e = 0.35;
@@ -176,12 +192,18 @@ void main(){
   float r2 = dot(toM,toM);
   float f = exp(-r2/(uRadius*uRadius))*uPresence;
   vec2 n = toM*inversesqrt(r2+1.0);
-  float e = clamp(pr*2.0 + f, 0.0, 1.0);
+  vec2 toS = p - uShockPos;
+  float ds = length(toS);
+  float sr = (ds-uShockR)/uShockW;
+  float ring = exp(-sr*sr)*uShock;
+  float e = clamp(pr*2.0 + f + ring, 0.0, 1.0);
 
   vec2 acc = vec2(0.0);
   // blown outward and swirled around the cursor
   acc += n*f*1.25*uStrength*uSpread*light;
   acc += vec2(-n.y, n.x)*f*1.45*uStrength*uSpread*(0.4+sd);
+  // tap shockwave: a radial kick as the ring front passes
+  acc += toS/(ds+1.0)*ring*0.9*uSpread*light;
   // carried by the liquid wake
   acc += (wake*42.0*uSpread*light - vel)*e*0.08;
   // curl-noise turbulence where the material is disturbed (and during the intro)
@@ -444,6 +466,9 @@ class LiquidEngine {
   private lastInput = -1e9;
   private settle = 1e9;
   private touchRelease = 0;
+  /** tap shockwave: position (root CSS px) and progress 0 → 1 (1 = idle) */
+  private shockPos = { x: 0, y: 0 };
+  private shockT = 1;
 
   private time = 0;
   private introT = 1;
@@ -854,13 +879,21 @@ class LiquidEngine {
   }
 
   pointer(
-    type: "move" | "down" | "up" | "leave",
+    type: "move" | "down" | "up" | "leave" | "cancel",
     x: number,
     y: number,
     touch: boolean,
   ) {
     if (!this.opts.interactive || this.lost) return;
     const now = performance.now();
+    if (type === "cancel") {
+      // the browser took the gesture over (a vertical scroll): let go now,
+      // presence/flow ease out on their own so the material settles smoothly
+      this.presenceTarget = 0;
+      this.touchRelease = 0;
+      this.wake();
+      return;
+    }
     if (type === "leave" || type === "up") {
       if (touch) this.touchRelease = now + 260;
       else this.presenceTarget = 0;
@@ -873,6 +906,12 @@ class LiquidEngine {
     }
     this.target.x = x;
     this.target.y = y;
+    // a finger landing is not yet a stir: it may be a tap (→ shockwave) or
+    // the start of a scroll, so only a touch that actually moves stirs
+    if (type === "down" && touch) {
+      this.touchRelease = 0;
+      return;
+    }
     this.presenceTarget = 1;
     this.lastInput = now;
     this.settle = 0;
@@ -881,6 +920,32 @@ class LiquidEngine {
       this.touchRelease = 0;
     }
     this.wake();
+  }
+
+  /** Radial burst from a tap: a ring that blasts the material outward, which
+   * then flows back home through the normal elastic return. */
+  shockwave(x: number, y: number) {
+    if (!this.opts.interactive || this.lost) return;
+    this.shockPos.x = x;
+    this.shockPos.y = y;
+    this.shockT = 0;
+    this.settle = 0;
+    this.lastInput = performance.now();
+    this.wake();
+  }
+
+  private shockUniforms() {
+    const t = this.shockT;
+    if (t >= 1) return { r: 0, w: 1, a: 0 };
+    const reach = this.radiusPx() * 1.7;
+    return {
+      r: reach * (1 - Math.pow(1 - t, 2.2)),
+      w: this.radiusPx() * 0.28,
+      a:
+        Math.pow(1 - t, 1.4) *
+        this.strength() *
+        (this.opts.reducedMotion ? 0.4 : 1),
+    };
   }
 
   private wake() {
@@ -944,7 +1009,8 @@ class LiquidEngine {
     if (this.introT < 1)
       this.introT = Math.min(1, this.introT + Math.min(rawMs, 100) / 3200);
 
-    const interacting = this.presence > 0.001 || this.burst > 0;
+    const interacting =
+      this.presence > 0.001 || this.burst > 0 || this.shockT < 1;
     // settle is counted in simulated frames, so slow devices never snap mid-return
     this.settle = interacting ? 0 : this.settle + dt;
     const active =
@@ -972,6 +1038,8 @@ class LiquidEngine {
     this.stepFlow(dt);
     this.stepSim(dt);
     this.burst = Math.max(0, this.burst - 0.1 * dt);
+    // ~0.6s for the ring to run out (in simulated frames, like `settle`)
+    if (this.shockT < 1) this.shockT = Math.min(1, this.shockT + dt / 36);
     this.draw();
     this.firstFrame();
   };
@@ -1013,6 +1081,15 @@ class LiquidEngine {
     gl.uniform1f(P.u.uRadius, this.radiusPx());
     gl.uniform1f(P.u.uPresence, Math.max(this.presence, this.burst));
     gl.uniform1f(P.u.uDecay, Math.pow(0.968, dt));
+    const sh = this.shockUniforms();
+    gl.uniform2f(
+      P.u.uShockPos,
+      (this.shockPos.x - r.x) / r.w,
+      (this.shockPos.y - r.y) / r.h,
+    );
+    gl.uniform1f(P.u.uShockR, sh.r);
+    gl.uniform1f(P.u.uShockW, sh.w);
+    gl.uniform1f(P.u.uShock, sh.a);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     this.flowIdx = dst;
     this.flowDirty = true;
@@ -1055,6 +1132,11 @@ class LiquidEngine {
     gl.uniform1f(P.u.uTime, this.time);
     gl.uniform1f(P.u.uDt, dt);
     gl.uniform1f(P.u.uIntro, intro);
+    const sh = this.shockUniforms();
+    gl.uniform2f(P.u.uShockPos, this.shockPos.x - r.x, this.shockPos.y - r.y);
+    gl.uniform1f(P.u.uShockR, sh.r);
+    gl.uniform1f(P.u.uShockW, sh.w);
+    gl.uniform1f(P.u.uShock, sh.a);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     this.stateIdx = dst;
     this.stateDirty = true;
@@ -1276,6 +1358,13 @@ export interface SculptureHeroProps {
    * still reads at a readable size instead of shrinking to fit one. Falls
    * back to `backdropText` on a single line when not given. */
   backdropTextMobile?: string[];
+  /** Phones (< 640px wide) only, opt-in: fade the sculpture out (gradient mask) so it ends by this
+   * fraction of the hero height, and centre it in the space above. */
+  mobileFadeBottom?: number;
+  /** Phones only, with `backdropTextMobile`: gap between the backdrop lines,
+   * as a fraction of the sculpture's width, centred on the sculpture — so the
+   * lines sit above and below it instead of behind it. */
+  mobileBackdropGap?: number;
   showCredit?: boolean;
   className?: string;
   style?: React.CSSProperties;
@@ -1362,9 +1451,12 @@ const CSS = `
   background:var(--sh-bg);color:var(--sh-fg);font-family:var(--sh-body);-webkit-font-smoothing:antialiased;
   touch-action:pan-y;display:flex;flex-direction:column;box-sizing:border-box}
 .sh-root *,.sh-root *::before,.sh-root *::after{box-sizing:border-box}
+.sh-root{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+.sh-content,.sh-credit{-webkit-user-select:text;user-select:text;-webkit-touch-callout:default}
+.sh-stage,.sh-canvas,.sh-fallback,.sh-backdrop{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;-webkit-user-drag:none}
 .sh-stage{position:absolute;inset:0;z-index:0;pointer-events:none}
 .sh-canvas{position:absolute;inset:0;width:100%;height:100%;display:block;opacity:0;transition:opacity .5s ease}
-.sh-fallback{position:absolute;display:block;max-width:none;user-select:none;-webkit-user-drag:none;transition:opacity .5s ease}
+.sh-fallback{position:absolute;display:block;max-width:none;transition:opacity .5s ease}
 .sh-root[data-gl="on"] .sh-canvas{opacity:1}
 .sh-root[data-gl="on"] .sh-fallback{opacity:0}
 .sh-root[data-swap="1"] .sh-canvas{opacity:0;transition-duration:.25s}
@@ -1374,6 +1466,7 @@ const CSS = `
   font-variant-ligatures:none;font-feature-settings:"liga" 0,"clig" 0,"calt" 0;
   background:linear-gradient(to bottom,#c4b5fd,#60a5fa);background-clip:text;-webkit-background-clip:text;color:transparent;opacity:.05}
 .sh-backdrop-line{display:block;white-space:nowrap}
+.sh-backdrop-line+.sh-backdrop-line{margin-top:var(--sh-bd-gap,0px)}
 .sh-nav{position:relative;z-index:2;display:flex;align-items:center;justify-content:space-between;gap:24px;
   padding:26px clamp(20px,3.2cqw,48px) 0}
 .sh-brand{font-family:var(--sh-head);font-weight:600;font-size:17px;letter-spacing:-.02em;color:inherit;text-decoration:none}
@@ -1433,6 +1526,9 @@ const CSS = `
   .sh-btn{height:48px}
   .sh-content{padding-bottom:40px}
   .sh-credit{right:auto;left:50%;transform:translateX(-50%)}
+  .sh-root[data-fade="1"] .sh-stage{
+    -webkit-mask-image:linear-gradient(to bottom,#000 var(--sh-fade-a),transparent var(--sh-fade-b));
+    mask-image:linear-gradient(to bottom,#000 var(--sh-fade-a),transparent var(--sh-fade-b))}
 }
 @media (prefers-reduced-motion:reduce){
   .sh-hint::before{animation:none}
@@ -1588,6 +1684,8 @@ export default function SculptureHero(props: SculptureHeroProps) {
     height = "100svh",
     backdropText = "forma",
     backdropTextMobile,
+    mobileFadeBottom,
+    mobileBackdropGap,
     showCredit = true,
     className,
     style,
@@ -1613,6 +1711,8 @@ export default function SculptureHero(props: SculptureHeroProps) {
     mobileScale: mobileSculptureScale,
     x: sculptureX,
     y: sculptureY,
+    mobileFadeBottom,
+    mobileBackdropGap,
   });
   // Mutating a ref during render (rather than in an effect) isn't safe under
   // the React Compiler; useLayoutEffect runs synchronously right after
@@ -1625,6 +1725,8 @@ export default function SculptureHero(props: SculptureHeroProps) {
       mobileScale: clamp(mobileSculptureScale, 0.3, 3),
       x: sculptureX,
       y: sculptureY,
+      mobileFadeBottom,
+      mobileBackdropGap,
     };
   });
 
@@ -1709,7 +1811,26 @@ export default function SculptureHero(props: SculptureHeroProps) {
     // a portrait sculpture on phones dissolves into the top of the copy
     if (mob && aspectRef.current < 1.3 && content)
       band.bottom += content.offsetHeight * 0.3;
-    const rect = computeRect(w, h, aspectRef.current, band, layout.current);
+    const L = layout.current;
+    const rect = computeRect(w, h, aspectRef.current, band, L);
+    // Phones, opt-in: the sculpture is centred in the space above
+    // `mobileFadeBottom`, and masked out before it reaches the copy.
+    const fade = mob && L.mobileFadeBottom !== undefined;
+    let fadeEnd = h;
+    if (fade) {
+      const contentTop = content ? content.offsetTop : h;
+      fadeEnd = Math.min(h * L.mobileFadeBottom!, contentTop - 16);
+      rect.y = fadeEnd / 2 - rect.h / 2;
+      const cy = rect.y + rect.h / 2;
+      const fadeStart = Math.max(cy + rect.w * 0.26, fadeEnd - h * 0.12);
+      root.style.setProperty("--sh-fade-a", fadeStart + "px");
+      root.style.setProperty("--sh-fade-b", fadeEnd + "px");
+      root.dataset.fade = "1";
+    } else if (root.dataset.fade) {
+      delete root.dataset.fade;
+      root.style.removeProperty("--sh-fade-a");
+      root.style.removeProperty("--sh-fade-b");
+    }
     const bd = backdropRef.current;
     if (bd) {
       // One line (desktop) or several stacked .sh-backdrop-line children
@@ -1725,8 +1846,22 @@ export default function SculptureHero(props: SculptureHeroProps) {
         const chars = Math.max(1, text.length);
         fontSize = Math.min(fontSize, (w * 0.9) / (chars * 0.62));
       }
+      // Phones, opt-in: split the lines around the sculpture's centre — the
+      // first above it, the rest below — instead of stacking them behind it.
+      const split =
+        mob && lineEls.length > 1 && L.mobileBackdropGap !== undefined;
+      if (split) {
+        const gap = rect.w * L.mobileBackdropGap!;
+        const cy = rect.y + rect.h / 2;
+        const room = cy - gap / 2 - 8;
+        fontSize = Math.max(24, Math.min(fontSize, room / 0.92));
+        bd.style.setProperty("--sh-bd-gap", gap + "px");
+        bd.style.top = cy + "px";
+      } else {
+        bd.style.removeProperty("--sh-bd-gap");
+        bd.style.top = (band.top + band.bottom) / 2 + "px";
+      }
       bd.style.fontSize = fontSize + "px";
-      bd.style.top = (band.top + band.bottom) / 2 + "px";
     }
     const img = imgRef.current;
     if (img) {
@@ -1737,11 +1872,16 @@ export default function SculptureHero(props: SculptureHeroProps) {
     }
     const hintEl = hintRef.current;
     if (hintEl) {
-      // the portrait phone sculpture runs into the copy: no room for the cue there
-      hintEl.style.display = mob && aspectRef.current < 1.3 ? "none" : "";
+      // the portrait phone sculpture runs into the copy: no room for the cue
+      // there — unless it's faded out above the copy, leaving a gap for it
+      hintEl.style.display =
+        mob && aspectRef.current < 1.3 && !fade ? "none" : "";
       hintEl.style.left = clamp(rect.x + rect.w / 2, 80, w - 80) + "px";
+      const contentTop = content ? content.offsetTop : h;
       hintEl.style.top =
-        Math.min(rect.y + rect.h * 0.95, band.bottom - 20) + "px";
+        (fade
+          ? (fadeEnd + contentTop) / 2 - 8
+          : Math.min(rect.y + rect.h * 0.95, band.bottom - 20)) + "px";
     }
     engineRef.current?.resize(w, h, rect);
   }, []);
@@ -1795,31 +1935,102 @@ export default function SculptureHero(props: SculptureHeroProps) {
         root.dataset.touched = "1";
       }
     };
+    // the copy, CTAs and credit keep their normal touch/selection behaviour;
+    // everything else in the hero is "the visual"
+    const onVisual = (t: EventTarget | null) =>
+      !(t instanceof Element && t.closest(".sh-content,.sh-credit,a,button"));
+    // touch gesture: a tap fires a shockwave, a horizontal drag stirs, a
+    // vertical drag is left to the browser (it scrolls, then pointercancel)
+    const g = {
+      id: -1,
+      x: 0,
+      y: 0,
+      t: 0,
+      moved: false,
+      axis: "",
+      tx: 0,
+      ty: 0,
+    };
     const onMove = (e: PointerEvent) => {
       const [x, y] = pos(e);
       const touch = e.pointerType === "touch";
-      if (touch && e.buttons === 0 && e.pressure === 0) return;
+      if (touch) {
+        if (e.pointerId !== g.id) return;
+        if (!g.moved && Math.hypot(x - g.x, y - g.y) < 10) return;
+        g.moved = true;
+      }
       engine?.pointer("move", x, y, touch);
       markTouched();
     };
     const onDown = (e: PointerEvent) => {
       const [x, y] = pos(e);
-      engine?.pointer("down", x, y, e.pointerType === "touch");
+      const touch = e.pointerType === "touch";
+      if (touch) {
+        if (!e.isPrimary) return;
+        g.id = e.pointerId;
+        g.x = x;
+        g.y = y;
+        g.t = performance.now();
+        g.moved = false;
+      }
+      engine?.pointer("down", x, y, touch);
       markTouched();
     };
     const onUp = (e: PointerEvent) => {
       const [x, y] = pos(e);
-      engine?.pointer("up", x, y, e.pointerType === "touch");
+      const touch = e.pointerType === "touch";
+      if (touch) {
+        if (e.pointerId !== g.id) return;
+        g.id = -1;
+        if (!g.moved && performance.now() - g.t < 400 && onVisual(e.target))
+          engine?.shockwave(x, y);
+      }
+      engine?.pointer("up", x, y, touch);
+    };
+    const onCancel = (e: PointerEvent) => {
+      if (e.pointerType === "touch" && e.pointerId !== g.id) return;
+      g.id = -1;
+      const [x, y] = pos(e);
+      engine?.pointer("cancel", x, y, e.pointerType === "touch");
     };
     const onLeave = (e: PointerEvent) => {
       const [x, y] = pos(e);
       engine?.pointer("leave", x, y, e.pointerType === "touch");
     };
+    // touch-action:pan-y already keeps horizontal drags with the page, but
+    // claim them explicitly too (WebKit has been inconsistent here); vertical
+    // drags are never touched, so the page always scrolls normally
+    const onTouchStart = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!t) return;
+      g.axis = "";
+      g.tx = t.clientX;
+      g.ty = t.clientY;
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (!t || e.touches.length > 1) return;
+      if (!g.axis) {
+        const dx = Math.abs(t.clientX - g.tx);
+        const dy = Math.abs(t.clientY - g.ty);
+        if (dx < 8 && dy < 8) return;
+        g.axis = dx > dy ? "x" : "y";
+      }
+      if (g.axis === "x" && onVisual(e.target) && e.cancelable)
+        e.preventDefault();
+    };
+    const onContextMenu = (e: MouseEvent) => {
+      if (onVisual(e.target)) e.preventDefault();
+    };
     root.addEventListener("pointermove", onMove, { passive: true });
     root.addEventListener("pointerdown", onDown, { passive: true });
     root.addEventListener("pointerup", onUp, { passive: true });
-    root.addEventListener("pointercancel", onUp, { passive: true });
+    root.addEventListener("pointercancel", onCancel, { passive: true });
     root.addEventListener("pointerleave", onLeave, { passive: true });
+    root.addEventListener("touchstart", onTouchStart, { passive: true });
+    root.addEventListener("touchmove", onTouchMove, { passive: false });
+    root.addEventListener("contextmenu", onContextMenu);
+    canvas.draggable = false;
 
     return () => {
       ro.disconnect();
@@ -1829,8 +2040,11 @@ export default function SculptureHero(props: SculptureHeroProps) {
       root.removeEventListener("pointermove", onMove);
       root.removeEventListener("pointerdown", onDown);
       root.removeEventListener("pointerup", onUp);
-      root.removeEventListener("pointercancel", onUp);
+      root.removeEventListener("pointercancel", onCancel);
       root.removeEventListener("pointerleave", onLeave);
+      root.removeEventListener("touchstart", onTouchStart);
+      root.removeEventListener("touchmove", onTouchMove);
+      root.removeEventListener("contextmenu", onContextMenu);
       engine?.destroy();
       engineRef.current = null;
       canvas.remove();
@@ -1918,7 +2132,15 @@ export default function SculptureHero(props: SculptureHeroProps) {
   // jump. Running synchronously before paint avoids that initial frame.
   React.useLayoutEffect(() => {
     relayout();
-  }, [sculptureScale, mobileSculptureScale, sculptureX, sculptureY, relayout]);
+  }, [
+    sculptureScale,
+    mobileSculptureScale,
+    sculptureX,
+    sculptureY,
+    mobileFadeBottom,
+    mobileBackdropGap,
+    relayout,
+  ]);
 
   const vars = {
     "--sh-bg": background,
