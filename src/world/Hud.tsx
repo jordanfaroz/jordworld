@@ -114,8 +114,8 @@ export function Hud({
       >
         <div className="border-border bg-background/80 text-muted-foreground rounded-md border-2 px-3 py-1.5 font-mono text-xs backdrop-blur-sm">
           {isTouch
-            ? "Tap to move · tap objects to open"
-            : "WASD / click to move · E to open · M map"}
+            ? "Tap to move, joystick to walk · tap objects to open"
+            : "WASD / click to move, Shift to run · E to open · M map"}
         </div>
       </div>
 

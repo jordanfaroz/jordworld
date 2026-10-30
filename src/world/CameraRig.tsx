@@ -19,6 +19,12 @@ export interface CameraRigProps {
   targetRef: React.RefObject<THREE.Vector3>;
   zoomRef: React.RefObject<number>;
   reducedMotion: boolean;
+  /** Set true for one frame (e.g. right after `Player.teleportTo`) to jump
+   * the camera straight to the target instead of lerping — read-and-cleared
+   * here, not owned by this component. Without it, a teleport behind a
+   * fade would still show the camera visibly catching up as the screen
+   * faded back in. */
+  snapRef?: React.RefObject<boolean>;
 }
 
 /** No free rotation — the only camera inputs are follow (automatic) and
@@ -27,6 +33,7 @@ export function CameraRig({
   targetRef,
   zoomRef,
   reducedMotion,
+  snapRef,
 }: CameraRigProps) {
   const camRef = useRef<THREE.OrthographicCamera>(null);
   const lookTarget = useRef(new THREE.Vector3());
@@ -41,9 +48,10 @@ export function CameraRig({
       .clone()
       .add(OFFSET_DIR.clone().multiplyScalar(OFFSET_DISTANCE));
 
-    if (reducedMotion) {
+    if (reducedMotion || snapRef?.current) {
       cam.position.copy(desiredPos);
       lookTarget.current.copy(target);
+      if (snapRef) snapRef.current = false;
     } else {
       cam.position.lerp(desiredPos, 0.08);
       lookTarget.current.lerp(target, 0.08);

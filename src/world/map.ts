@@ -43,17 +43,47 @@ export interface RegionAnchor {
    * approach face, not a literal door.
    */
   doorFacing: { x: number; z: number };
+  /**
+   * The walkable tile just outside the door (or, for Park, the clearing's
+   * edge) — where a path to this region actually ends. Every consumer that
+   * needs to "go to" a region (building taps, fast travel, the road-carving
+   * below) targets this, not `{x, z}` directly: `{x, z}` is the footprint
+   * centre, which is an unwalkable tile for Lab/Arcade/Workshop/Park alike.
+   * Validated walkable + reachable from spawn by the dev-only check in
+   * World.tsx.
+   */
+  entrance: { x: number; z: number };
 }
 
 export const PLAZA_CENTER = { x: 24, z: 24 };
 export const BUILDING_HALF_SIZE = 2; // 4x4 footprint
 
-export const REGION_ANCHORS: RegionAnchor[] = [
+/** The tile just outside a footprint, in its door/facing direction. Also
+ * used as the literal `entrance` on each `RegionAnchor` below — kept as a
+ * named function (not inlined into the anchor literals) because it reads
+ * clearer applied to `{x, z, doorFacing}` than duplicated arithmetic. */
+function approachTile(anchor: {
+  x: number;
+  z: number;
+  doorFacing: { x: number; z: number };
+}) {
+  return {
+    x: anchor.x + anchor.doorFacing.x * (BUILDING_HALF_SIZE + 1),
+    z: anchor.z + anchor.doorFacing.z * (BUILDING_HALF_SIZE + 1),
+  };
+}
+
+const RAW_ANCHORS: Omit<RegionAnchor, "entrance">[] = [
   { slug: "lab", x: 12, z: 12, doorFacing: { x: 0, z: 1 } },
   { slug: "arcade", x: 36, z: 12, doorFacing: { x: 0, z: 1 } },
   { slug: "workshop", x: 12, z: 36, doorFacing: { x: 1, z: 0 } },
   { slug: "park", x: 36, z: 36, doorFacing: { x: 0, z: 1 } },
 ];
+
+export const REGION_ANCHORS: RegionAnchor[] = RAW_ANCHORS.map((a) => ({
+  ...a,
+  entrance: approachTile(a),
+}));
 
 // Small plaza landmarks — not blocking footprints, just prop anchors.
 export const HOUSE_POS = { x: 22, z: 24 };
@@ -75,15 +105,6 @@ function mulberry32(seed: number) {
 export interface MapData {
   tiles: Tile[][]; // [x][z]
   decorations: { x: number; z: number; kind: "tree" | "rock" | "flower" }[];
-}
-
-/** Where the road from the plaza meets a region: the literal door for
- * Lab/Arcade/Workshop, or just the clearing's edge for Park (no door). */
-function approachTile(anchor: RegionAnchor) {
-  return {
-    x: anchor.x + anchor.doorFacing.x * (BUILDING_HALF_SIZE + 1),
-    z: anchor.z + anchor.doorFacing.z * (BUILDING_HALF_SIZE + 1),
-  };
 }
 
 function carveLPath(
@@ -156,10 +177,13 @@ export function generateMap(seed = 1337): MapData {
     }
   }
 
-  // L-shaped roads from the plaza edge to each region's approach tile.
+  // L-shaped roads from the plaza edge to each region's entrance.
   for (const anchor of REGION_ANCHORS) {
-    const approach = approachTile(anchor);
-    carveLPath(tiles, { x: PLAZA_CENTER.x, z: PLAZA_CENTER.z }, approach);
+    carveLPath(
+      tiles,
+      { x: PLAZA_CENTER.x, z: PLAZA_CENTER.z },
+      anchor.entrance,
+    );
   }
 
   // Decorations: scattered on plain grass only (never path/plaza/building/shore).
@@ -183,6 +207,30 @@ export function isWalkable(tiles: Tile[][], x: number, z: number): boolean {
   if (x < 0 || x >= GRID_SIZE || z < 0 || z >= GRID_SIZE) return false;
   const t = tiles[x][z];
   return t !== "water" && t !== "building";
+}
+
+/** Ring search outward from (x, z) for the closest walkable tile — used
+ * when a click/tap lands on water or a building footprint, so `moveTo`
+ * still goes somewhere sensible instead of silently failing (`findPath`
+ * returns null for an unwalkable goal). Returns the tile itself if it's
+ * already walkable, or null if nothing walkable turns up within
+ * `maxRadius` (shouldn't happen on this map; it's a safety net). */
+export function findNearestWalkable(
+  tiles: Tile[][],
+  x: number,
+  z: number,
+  maxRadius = 6,
+): { x: number; z: number } | null {
+  if (isWalkable(tiles, x, z)) return { x, z };
+  for (let r = 1; r <= maxRadius; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      for (let dz = -r; dz <= r; dz++) {
+        if (Math.max(Math.abs(dx), Math.abs(dz)) !== r) continue; // ring only, not the filled square
+        if (isWalkable(tiles, x + dx, z + dz)) return { x: x + dx, z: z + dz };
+      }
+    }
+  }
+  return null;
 }
 
 export function getRegionAt(x: number, z: number): RegionSlug | "home" {

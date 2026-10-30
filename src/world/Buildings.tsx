@@ -76,6 +76,21 @@ export function Buildings({
     },
   });
 
+  // onClick alone (no event param) doesn't stop propagation, so the ground
+  // plane further along the same ray — always hit, since it covers the
+  // whole map — gets the click too, queuing a second, conflicting moveTo to
+  // wherever the ray happens to land on it (which, for a click that visibly
+  // lands on a building, is the building's own unwalkable footprint tile:
+  // the root of the "walks into the wall" bug). Every clickable prop below
+  // uses this instead of a bare `onClick`.
+  const interactHandlers = (id: string) => ({
+    onClick: (e: { stopPropagation: () => void }) => {
+      e.stopPropagation();
+      onInteract(id);
+    },
+    ...hoverHandlers(id),
+  });
+
   const labAnchor = REGION_ANCHORS.find((a) => a.slug === "lab")!;
   const arcadeAnchor = REGION_ANCHORS.find((a) => a.slug === "arcade")!;
   const workshopAnchor = REGION_ANCHORS.find((a) => a.slug === "workshop")!;
@@ -118,7 +133,14 @@ export function Buildings({
   return (
     <group>
       {/* Walls: 3 region buildings + the house, one box geometry scaled per
-          instance, tinted per-instance for each building's identity. */}
+          instance, tinted per-instance for each building's identity. The
+          three region buildings are clickable — they previously had no
+          handler at all, so a tap on one fell through to the ground plane
+          behind it (same ray, no stopPropagation to stop it there), which
+          then read as a click on whatever unwalkable footprint tile the ray
+          hit. interactHandlers routes it to the building's own `entrance`
+          tile instead (see interaction.ts). The house has no region/content
+          behind it, so it stays a plain, non-interactive prop. */}
       <Instances limit={4} receiveShadow>
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial />
@@ -126,16 +148,19 @@ export function Buildings({
           position={[labX, buildingSize / 2, labZ]}
           scale={[buildingSize, buildingSize, buildingSize]}
           color={WORLD_COLORS.labWall}
+          {...interactHandlers("building:lab")}
         />
         <Instance
           position={[arcadeX, buildingSize / 2, arcadeZ]}
           scale={[buildingSize, buildingSize, buildingSize]}
           color={WORLD_COLORS.arcadeWall}
+          {...interactHandlers("building:arcade")}
         />
         <Instance
           position={[workshopX, buildingSize / 2, workshopZ]}
           scale={[buildingSize, buildingSize, buildingSize]}
           color={WORLD_COLORS.workshopWall}
+          {...interactHandlers("building:workshop")}
         />
         <Instance
           position={[houseX, 0.6, houseZ]}
@@ -145,7 +170,10 @@ export function Buildings({
       </Instances>
 
       {/* Roofs: Arcade + Workshop + House cones (Lab's dome is unique, kept
-          separate below), also per-instance tinted. */}
+          separate below), also per-instance tinted. Arcade/Workshop's roofs
+          get the same interactHandlers as their walls, for the same
+          click-through reason — the roof is the nearest hit for a tap
+          anywhere near the top of the building. */}
       <Instances limit={3}>
         <coneGeometry args={[1, 1, 4]} />
         <meshStandardMaterial />
@@ -154,12 +182,14 @@ export function Buildings({
           rotation={[0, arcadeDoorAngle, 0]}
           scale={[buildingSize * 0.75, 1.2, buildingSize * 0.75]}
           color={WORLD_COLORS.arcadeRoof}
+          {...interactHandlers("building:arcade")}
         />
         <Instance
           position={[workshopX, buildingSize + 0.4, workshopZ]}
           rotation={[0, workshopDoorAngle, 0]}
           scale={[buildingSize * 0.75, 1.2, buildingSize * 0.75]}
           color={WORLD_COLORS.workshopRoof}
+          {...interactHandlers("building:workshop")}
         />
         <Instance
           position={[houseX, 1.4, houseZ]}
@@ -171,15 +201,22 @@ export function Buildings({
 
       {/* Lab's dome/telescope roof is unique geometry anyway (not worth
           instancing for 1 instance) — and, like every other static prop,
-          skips castShadow; only the player casts a real shadow. */}
-      <mesh position={[labX, buildingSize + 0.8, labZ]}>
+          skips castShadow; only the player casts a real shadow. Clickable
+          for the same reason as the roofs above: it's the tallest point of
+          the building, an easy tap target. */}
+      <mesh
+        position={[labX, buildingSize + 0.8, labZ]}
+        {...interactHandlers("building:lab")}
+      >
         <sphereGeometry args={[buildingSize / 2.2, 12, 8]} />
         <meshStandardMaterial color={WORLD_COLORS.labRoof} />
       </mesh>
 
       {/* Neon signs: Lab + Workshop door signs, 2 park lamp tops, and the
           signpost's flag — a shared cyan glow. Arcade's marquee is split
-          out below so it can be a distinct, more saturated magenta. */}
+          out below so it can be a distinct, more saturated magenta. Lab and
+          Workshop's signs are the most obvious tap target of all (they sit
+          right at eye level by the door), so they're clickable too. */}
       <Instances limit={5}>
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial
@@ -191,11 +228,13 @@ export function Buildings({
           position={signPos(labAnchor, labX, labZ)}
           rotation={[0, signAngle(labAnchor), 0]}
           scale={[1.4, 0.4, 0.08]}
+          {...interactHandlers("building:lab")}
         />
         <Instance
           position={signPos(workshopAnchor, workshopX, workshopZ)}
           rotation={[0, signAngle(workshopAnchor), 0]}
           scale={[1.4, 0.4, 0.08]}
+          {...interactHandlers("building:workshop")}
         />
         <Instance
           position={[pondX - 2, 1.25, pondZ - 2]}
@@ -209,13 +248,14 @@ export function Buildings({
           position={[signpostX, 1.0, signpostZ + 0.2]}
           rotation={[0, 0, 0.15]}
           scale={[0.6, 0.25, 0.05]}
-          onClick={() => onInteract("signpost")}
-          {...hoverHandlers("signpost")}
+          {...interactHandlers("signpost")}
         />
       </Instances>
 
       {/* Arcade's neon trim (a strip along the wall top) + glowing marquee
-          (above the door) — one dedicated magenta-emissive group. */}
+          (above the door) — one dedicated magenta-emissive group. The
+          marquee in particular is the most obvious tap target on the
+          building, so it's clickable too. */}
       <Instances limit={2}>
         <boxGeometry args={[1, 1, 1]} />
         <meshStandardMaterial
@@ -227,11 +267,13 @@ export function Buildings({
           position={[arcadeX, buildingSize - 0.15, arcadeZ]}
           rotation={[0, arcadeDoorAngle, 0]}
           scale={[buildingSize * 0.92, 0.12, 0.08]}
+          {...interactHandlers("building:arcade")}
         />
         <Instance
           position={signPos(arcadeAnchor, arcadeX, arcadeZ)}
           rotation={[0, signAngle(arcadeAnchor), 0]}
           scale={[1.8, 0.5, 0.1]}
+          {...interactHandlers("building:arcade")}
         />
       </Instances>
 
@@ -262,8 +304,7 @@ export function Buildings({
         <Instance
           position={[signpostX, 0.6, signpostZ]}
           scale={[0.12, 1.2, 0.12]}
-          onClick={() => onInteract("signpost")}
-          {...hoverHandlers("signpost")}
+          {...interactHandlers("signpost")}
         />
       </Instances>
 
@@ -287,8 +328,7 @@ export function Buildings({
           position={[mailboxX, 0.4, mailboxZ]}
           scale={[0.1, 0.8, 0.1]}
           color={WORLD_COLORS.buildingWall}
-          onClick={() => onInteract("mailbox")}
-          {...hoverHandlers("mailbox")}
+          {...interactHandlers("mailbox")}
         />
         <Instance
           position={[
@@ -334,16 +374,14 @@ export function Buildings({
       <mesh
         position={[signpostX, 0.8, signpostZ - 0.2]}
         rotation={[0, 0, -0.1]}
-        onClick={() => onInteract("signpost")}
-        {...hoverHandlers("signpost")}
+        {...interactHandlers("signpost")}
       >
         <boxGeometry args={[0.6, 0.25, 0.05]} />
         <meshStandardMaterial color={WORLD_COLORS.statusLive} />
       </mesh>
       <mesh
         position={[mailboxX, 0.85, mailboxZ]}
-        onClick={() => onInteract("mailbox")}
-        {...hoverHandlers("mailbox")}
+        {...interactHandlers("mailbox")}
       >
         <boxGeometry args={[0.35, 0.3, 0.25]} />
         <meshStandardMaterial color={WORLD_COLORS.statusInDev} />
@@ -351,13 +389,20 @@ export function Buildings({
 
       {/* Building labels: emoji + region name, floating above each roof.
           drei's Html is a DOM overlay that already tracks the 3D position
-          and renders flat-to-camera (no draw calls). */}
+          and renders flat-to-camera (no draw calls). The three region
+          labels are clickable, same destination (and same stopPropagation
+          need, though for a different reason: a DOM click here doesn't
+          reach the canvas underneath at all without it, so nothing bad
+          happens either way — it's just good hygiene) as tapping the
+          building itself. Home has no region/content behind it, so its
+          label stays a plain caption like the rest of its prop. */}
       <BuildingLabel
         x={labX}
         z={labZ}
         y={buildingSize + 2.2}
         emoji={lab.emoji}
         label={lab.label}
+        onClick={() => onInteract("building:lab")}
       />
       <BuildingLabel
         x={arcadeX}
@@ -365,6 +410,7 @@ export function Buildings({
         y={buildingSize + 2.2}
         emoji={arcade.emoji}
         label={arcade.label}
+        onClick={() => onInteract("building:arcade")}
       />
       <BuildingLabel
         x={workshopX}
@@ -372,6 +418,7 @@ export function Buildings({
         y={buildingSize + 2.2}
         emoji={workshop.emoji}
         label={workshop.label}
+        onClick={() => onInteract("building:workshop")}
       />
       <BuildingLabel x={houseX} z={houseZ} y={2.6} emoji="🏠" label="Home" />
 
@@ -389,8 +436,7 @@ export function Buildings({
               position={[x, 0.3, z]}
               scale={[0.6, 0.6, 0.6]}
               color={WORLD_COLORS.plaza}
-              onClick={() => onInteract(`project:${p.project.slug}`)}
-              {...hoverHandlers(`project:${p.project.slug}`)}
+              {...interactHandlers(`project:${p.project.slug}`)}
             />
           );
         })}
@@ -402,8 +448,7 @@ export function Buildings({
               position={[x, 0.25, z]}
               scale={[0.5, 0.5, 0.5]}
               color={WORLD_COLORS.wood}
-              onClick={() => onInteract(`hobby:${h.hobby.slug}`)}
-              {...hoverHandlers(`hobby:${h.hobby.slug}`)}
+              {...interactHandlers(`hobby:${h.hobby.slug}`)}
             />
           );
         })}
@@ -433,8 +478,7 @@ export function Buildings({
                   key={p.project.slug}
                   position={[x, 0.85, z]}
                   scale={[0.35, 0.35, 0.35]}
-                  onClick={() => onInteract(`project:${p.project.slug}`)}
-                  {...hoverHandlers(`project:${p.project.slug}`)}
+                  {...interactHandlers(`project:${p.project.slug}`)}
                 />
               );
             })}
@@ -457,8 +501,7 @@ export function Buildings({
                 position={[x, 0.65, z]}
                 rotation={[0, Math.PI / 4, 0]}
                 scale={[0.3, 0.3, 0.3]}
-                onClick={() => onInteract(`hobby:${h.hobby.slug}`)}
-                {...hoverHandlers(`hobby:${h.hobby.slug}`)}
+                {...interactHandlers(`hobby:${h.hobby.slug}`)}
               />
             );
           })}
@@ -508,16 +551,33 @@ function BuildingLabel({
   y,
   emoji,
   label,
+  onClick,
 }: {
   x: number;
   z: number;
   y: number;
   emoji: string;
   label: string;
+  /** Omit for a plain, non-interactive caption (Home). */
+  onClick?: () => void;
 }) {
   return (
-    <Html position={[x, y, z]} center zIndexRange={[5, 0]} pointerEvents="none">
-      <div className="border-border bg-background/85 text-foreground font-heading pointer-events-none rounded-md border-2 px-3 py-1 text-sm whitespace-nowrap backdrop-blur-sm">
+    <Html
+      position={[x, y, z]}
+      center
+      zIndexRange={[5, 0]}
+      pointerEvents={onClick ? "auto" : "none"}
+    >
+      <div
+        onClick={
+          onClick &&
+          ((e) => {
+            e.stopPropagation();
+            onClick();
+          })
+        }
+        className={`border-border bg-background/85 text-foreground font-heading rounded-md border-2 px-3 py-1 text-sm whitespace-nowrap backdrop-blur-sm ${onClick ? "cursor-pointer" : "pointer-events-none"}`}
+      >
         {emoji} {label}
       </div>
     </Html>

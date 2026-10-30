@@ -20,11 +20,11 @@ import { StatusPill } from "@/components/status-pill";
 import { ProjectActions } from "@/components/project-actions";
 import { ContactForm } from "@/components/contact-form";
 import { useMediaQuery } from "@/lib/use-media-query";
-import { getProject } from "@/content/projects";
+import { getProject, getProjectsByRegion } from "@/content/projects";
 import { hobbies } from "@/content/hobbies";
 import { regions, getRegion } from "@/content/regions";
 import type { Interactable } from "./interaction";
-import type { Project } from "@/content/types";
+import type { Project, ProjectRegion } from "@/content/types";
 
 export interface PanelsProps {
   open: Interactable | null;
@@ -32,6 +32,10 @@ export interface PanelsProps {
   onFastTravel: (regionSlug: string) => void;
   onCycle: (direction: "prev" | "next") => void;
   canCycle: boolean;
+  /** Walks to a project's pedestal and opens its panel on arrival — used by
+   * the building panel's project list, so picking one there behaves exactly
+   * like walking up and tapping it in the world (not a teleport). */
+  onEnterProject: (slug: string) => void;
 }
 
 const STRIP_COLOR: Record<Project["status"], string> = {
@@ -46,6 +50,7 @@ export function Panels({
   onFastTravel,
   onCycle,
   canCycle,
+  onEnterProject,
 }: PanelsProps) {
   const isDesktop = useMediaQuery("(min-width: 640px)");
   const isOpen = open !== null;
@@ -127,6 +132,31 @@ export function Panels({
   } else if (open?.kind === "mailbox") {
     title = "Contact";
     body = <ContactForm />;
+  } else if (open?.kind === "building") {
+    const slug = open.id.replace("building:", "") as ProjectRegion;
+    const region = getRegion(slug);
+    const regionProjects = getProjectsByRegion(slug);
+    title = region.label;
+    body = (
+      <div className="flex flex-col gap-2">
+        <p className="text-muted-foreground text-sm">
+          {regionProjects.length === 0
+            ? "Nothing here yet."
+            : `${regionProjects.length} project${regionProjects.length === 1 ? "" : "s"} here.`}
+        </p>
+        {regionProjects.map((project) => (
+          <Button
+            key={project.slug}
+            variant="outline"
+            className="justify-start"
+            onClick={() => onEnterProject(project.slug)}
+          >
+            <StatusPill status={project.status} />
+            {project.title}
+          </Button>
+        ))}
+      </div>
+    );
   }
 
   const header = (

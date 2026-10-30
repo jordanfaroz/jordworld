@@ -11,6 +11,8 @@ import {
   generateMap,
   GRID_SIZE,
   getRegionAt,
+  isWalkable,
+  PLAZA_CENTER,
   type MapData,
   type RegionSlug,
 } from "./map";
@@ -26,12 +28,14 @@ import {
   INTERACT_RANGE,
   type Interactable,
 } from "./interaction";
+import { findPath } from "./pathfinding";
 import { Terrain } from "./Terrain";
 import { Buildings } from "./Buildings";
 import { Lighting } from "./Lighting";
 import { WORLD_COLORS } from "./colors";
 import { CameraRig, DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM } from "./CameraRig";
-import { Player, type PlayerHandle } from "./Player";
+import { Player, type PlayerHandle, type JoystickVector } from "./Player";
+import { Joystick } from "./Joystick";
 import { Hud } from "./Hud";
 import { Panels } from "./Panels";
 import { EnterWorldIntro, INTRO_STORAGE_KEY } from "./EnterWorldIntro";
@@ -57,6 +61,8 @@ interface SceneProps {
   onFirstMove: () => void;
   pendingInteractIdRef: React.RefObject<string | null>;
   isTouch: boolean;
+  joystickRef: React.RefObject<JoystickVector>;
+  cameraSnapRef: React.RefObject<boolean>;
 }
 
 function Scene({
@@ -72,6 +78,8 @@ function Scene({
   onFirstMove,
   pendingInteractIdRef,
   isTouch,
+  joystickRef,
+  cameraSnapRef,
 }: SceneProps) {
   const hobbies = useMemo(() => getHobbyPlacements(), []);
   const interactables = useMemo(
@@ -180,6 +188,7 @@ function Scene({
         targetRef={targetRef}
         zoomRef={zoomRef}
         reducedMotion={reducedMotion}
+        snapRef={cameraSnapRef}
       />
       <Terrain map={map} />
       <Buildings
@@ -200,6 +209,7 @@ function Scene({
         tiles={map.tiles}
         gridOffset={GRID_OFFSET}
         reducedMotion={reducedMotion}
+        joystickRef={joystickRef}
         onMovingChange={(moving) => {
           if (moving && !hasMoved.current) {
             hasMoved.current = true;
@@ -333,6 +343,9 @@ export function World() {
   const playerRef = useRef<PlayerHandle | null>(null);
   const zoomRef = useRef(DEFAULT_ZOOM);
   const pendingInteractIdRef = useRef<string | null>(null);
+  const joystickRef = useRef<JoystickVector>({ x: 0, y: 0 });
+  const cameraSnapRef = useRef(false);
+  const [fading, setFading] = useState(false);
 
   useEffect(() => {
     const coarse = window.matchMedia("(pointer: coarse)").matches;
@@ -343,6 +356,35 @@ export function World() {
     document.addEventListener("visibilitychange", onVisibility);
     return () => document.removeEventListener("visibilitychange", onVisibility);
   }, []);
+
+  // Dev-only correctness check: every region's entrance tile (where a
+  // building tap, fast travel, etc. actually paths to) must itself be
+  // walkable and reachable from spawn. Stripped in production (dead branch
+  // on a constant condition); console-only either way, never throws — this
+  // is a "would've caught the bug" tripwire for future map edits, not a
+  // runtime guard.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    for (const anchor of REGION_ANCHORS) {
+      const { x, z } = anchor.entrance;
+      if (!isWalkable(map.tiles, x, z)) {
+        console.error(
+          `[world] ${anchor.slug} entrance (${x}, ${z}) is not walkable`,
+        );
+        continue;
+      }
+      const path = findPath(
+        map.tiles,
+        { x: PLAZA_CENTER.x, z: PLAZA_CENTER.z },
+        { x, z },
+      );
+      if (!path) {
+        console.error(
+          `[world] ${anchor.slug} entrance (${x}, ${z}) is unreachable from spawn`,
+        );
+      }
+    }
+  }, [map]);
 
   const handleArrival = useCallback((id: string) => {
     const interactables = buildInteractables(
@@ -380,6 +422,21 @@ export function World() {
       player.moveTo(target.x - GRID_OFFSET, target.z - GRID_OFFSET);
     },
     [openPanel, pedestals],
+  );
+
+  // A project row picked from a building panel: same "close this panel,
+  // walk to the pedestal, open on arrival" shape as handleCycle above, just
+  // keyed by slug instead of prev/next from whatever's currently open.
+  const handleEnterProject = useCallback(
+    (slug: string) => {
+      const pedestal = pedestals.find((p) => p.project.slug === slug);
+      const player = playerRef.current;
+      if (!pedestal || !player) return;
+      setOpenPanel(null);
+      pendingInteractIdRef.current = `project:${slug}`;
+      player.moveTo(pedestal.x - GRID_OFFSET, pedestal.z - GRID_OFFSET);
+    },
+    [pedestals],
   );
 
   const handleReplayIntro = useCallback(() => {
@@ -435,20 +492,30 @@ export function World() {
     if (!openPanel) containerRef.current?.focus();
   }, [openPanel]);
 
+  // Fade to the background colour, teleport (no walk), fade back — used by
+  // both the minimap's region markers and the signpost panel's list. The
+  // camera would otherwise visibly snap-then-catch-up as the screen faded
+  // back in, since CameraRig normally lerps toward the player; cameraSnapRef
+  // tells it to jump straight there for the one frame right after the
+  // teleport instead.
+  const FADE_MS = 180;
   const handleFastTravel = useCallback((regionSlug: string) => {
     const anchor = REGION_ANCHORS.find((a) => a.slug === regionSlug);
     const player = playerRef.current;
     if (!player) return;
-    if (anchor) {
-      const door = {
-        x: anchor.x + anchor.doorFacing.x * 3,
-        z: anchor.z + anchor.doorFacing.z * 3,
-      };
-      player.moveTo(door.x - GRID_OFFSET, door.z - GRID_OFFSET);
-    } else {
-      player.moveTo(0, 0); // "home" = plaza centre
-    }
+    const dest = anchor
+      ? {
+          x: anchor.entrance.x - GRID_OFFSET,
+          z: anchor.entrance.z - GRID_OFFSET,
+        }
+      : { x: 0, z: 0 }; // "home" = plaza centre
     setOpenPanel(null);
+    setFading(true);
+    window.setTimeout(() => {
+      player.teleportTo(dest.x, dest.z);
+      cameraSnapRef.current = true;
+      setFading(false);
+    }, FADE_MS);
   }, []);
 
   const applyZoomDelta = useCallback((delta: number) => {
@@ -574,8 +641,22 @@ export function World() {
           onFirstMove={() => setControlsHintVisible(false)}
           pendingInteractIdRef={pendingInteractIdRef}
           isTouch={isTouch}
+          joystickRef={joystickRef}
+          cameraSnapRef={cameraSnapRef}
         />
       </Canvas>
+
+      {/* Fast-travel fade: opaque over the dash, transparent (and
+          pointer-events-none throughout) otherwise. Above the HUD too, so a
+          teleport reads as a clean cut rather than the minimap/buttons
+          staying put while the world jumps under them. */}
+      <div
+        className="bg-background pointer-events-none absolute inset-0 z-20 transition-opacity duration-150"
+        style={{ opacity: fading ? 1 : 0 }}
+        aria-hidden="true"
+      />
+
+      {isTouch && <Joystick vectorRef={joystickRef} />}
 
       <Hud
         region={region}
@@ -599,6 +680,7 @@ export function World() {
         onFastTravel={handleFastTravel}
         onCycle={handleCycle}
         canCycle={canCycle}
+        onEnterProject={handleEnterProject}
       />
       <EnterWorldIntro ready={worldReady} reducedMotion={reducedMotion} />
     </div>

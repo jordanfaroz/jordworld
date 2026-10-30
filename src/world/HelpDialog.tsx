@@ -18,10 +18,13 @@ export interface HelpDialogProps {
 
 const KEYS: [string, string][] = [
   ["WASD / arrows", "Walk"],
+  ["Shift / joystick edge", "Run"],
   ["Click / tap ground", "Walk there"],
+  ["Joystick (touch)", "Walk"],
   ["E", "Interact"],
   ["M", "Toggle map"],
   ["+ / −, scroll, pinch", "Zoom"],
+  ["Tap minimap region", "Fast travel"],
   ["Esc", "Close panel"],
   ["?", "This dialog"],
 ];

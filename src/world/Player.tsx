@@ -2,11 +2,21 @@ import { useRef, useEffect, useImperativeHandle, forwardRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
 
-import { isWalkable, type Tile } from "./map";
+import { findNearestWalkable, isWalkable, type Tile } from "./map";
 import { findPath } from "./pathfinding";
 import { WORLD_COLORS } from "./colors";
 
-const SPEED = 4; // world units / second
+// Walk/run speed in world units/second. WALK_SPEED was 4 — raised along with
+// the run tier added here (Shift on desktop, joystick pushed fully on
+// touch): the old speed read as sluggish once there was a faster gait to
+// compare it against.
+const WALK_SPEED = 5.5;
+const RUN_SPEED = 9;
+// Below this, a joystick deflection is a dead zone (noise from a finger
+// resting on the base); at/above it, analog magnitude scales walk speed
+// up to RUN_THRESHOLD, past which it's a full run.
+const JOYSTICK_DEADZONE = 0.08;
+const RUN_THRESHOLD = 0.92;
 const WAYPOINT_EPSILON = 0.08;
 
 // Screen-relative directions (see map.ts's comment on screen-compass math):
@@ -25,6 +35,17 @@ export interface PlayerHandle {
    * frame rather than snapshotting, same pattern for the same reason. */
   facing: React.RefObject<number>;
   moveTo: (worldX: number, worldZ: number) => void;
+  /** Instant relocation, no pathfinding/walk — for minimap fast travel's
+   * fade-and-dash, called while the screen is opaque. */
+  teleportTo: (worldX: number, worldZ: number) => void;
+}
+
+/** Normalized screen-space joystick deflection: x = right(+)/left(-), y =
+ * up(+)/down(-), both 0 when untouched. Read live each frame like the
+ * keyboard's `keysDown`, not passed as React state. */
+export interface JoystickVector {
+  x: number;
+  y: number;
 }
 
 export interface PlayerProps {
@@ -32,6 +53,7 @@ export interface PlayerProps {
   gridOffset: number; // GRID_SIZE / 2, to convert world <-> tile space
   reducedMotion: boolean;
   onMovingChange?: (moving: boolean) => void;
+  joystickRef?: React.RefObject<JoystickVector>;
 }
 
 /** Head/body/arms/legs voxel character. WASD moves directly (cancels any
@@ -39,7 +61,7 @@ export interface PlayerProps {
  * Movement uses separate-axis collision so the player slides along walls
  * instead of stopping dead on a diagonal into one. */
 export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
-  { tiles, gridOffset, reducedMotion, onMovingChange },
+  { tiles, gridOffset, reducedMotion, onMovingChange, joystickRef },
   ref,
 ) {
   const position = useRef(new THREE.Vector3(0, 0, 0));
@@ -48,6 +70,7 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
   const path = useRef<{ x: number; z: number }[] | null>(null);
   const pathIndex = useRef(0);
   const keysDown = useRef(new Set<string>());
+  const shiftDown = useRef(false);
   const wasMoving = useRef(false);
 
   const groupRef = useRef<THREE.Group>(null);
@@ -66,38 +89,51 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
         x: Math.round(position.current.x + gridOffset),
         z: Math.round(position.current.z + gridOffset),
       };
-      const goalTile = {
+      let goalTile = {
         x: Math.round(worldX + gridOffset),
         z: Math.round(worldZ + gridOffset),
       };
+      // A blocked goal (water, a building footprint) previously just failed
+      // silently — findPath returns null for an unwalkable goal. Snap to
+      // the nearest walkable tile instead, so every click goes somewhere.
+      if (!isWalkable(tiles, goalTile.x, goalTile.z)) {
+        const snapped = findNearestWalkable(tiles, goalTile.x, goalTile.z);
+        if (!snapped) return;
+        goalTile = snapped;
+      }
       const found = findPath(tiles, startTile, goalTile);
       if (found) {
         path.current = found;
         pathIndex.current = 0;
       }
     },
+    teleportTo(worldX, worldZ) {
+      path.current = null;
+      position.current.set(worldX, 0, worldZ);
+    },
   }));
 
   useEffect(() => {
+    const MOVE_KEYS = [
+      "w",
+      "a",
+      "s",
+      "d",
+      "arrowup",
+      "arrowdown",
+      "arrowleft",
+      "arrowright",
+    ];
     const onKeyDown = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
-      if (
-        [
-          "w",
-          "a",
-          "s",
-          "d",
-          "arrowup",
-          "arrowdown",
-          "arrowleft",
-          "arrowright",
-        ].includes(k)
-      ) {
+      shiftDown.current = e.shiftKey;
+      if (MOVE_KEYS.includes(k)) {
         keysDown.current.add(k);
         path.current = null; // direct control cancels any in-progress path
       }
     };
     const onKeyUp = (e: KeyboardEvent) => {
+      shiftDown.current = e.shiftKey;
       keysDown.current.delete(e.key.toLowerCase());
     };
     window.addEventListener("keydown", onKeyDown);
@@ -109,17 +145,46 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
   }, []);
 
   useFrame((_, delta) => {
-    const move = new THREE.Vector3();
     const keys = keysDown.current;
-    if (keys.has("w") || keys.has("arrowup")) move.add(SCREEN_DIRS.up);
-    if (keys.has("s") || keys.has("arrowdown")) move.add(SCREEN_DIRS.down);
-    if (keys.has("a") || keys.has("arrowleft")) move.add(SCREEN_DIRS.left);
-    if (keys.has("d") || keys.has("arrowright")) move.add(SCREEN_DIRS.right);
+    const keyMove = new THREE.Vector3();
+    if (keys.has("w") || keys.has("arrowup")) keyMove.add(SCREEN_DIRS.up);
+    if (keys.has("s") || keys.has("arrowdown")) keyMove.add(SCREEN_DIRS.down);
+    if (keys.has("a") || keys.has("arrowleft")) keyMove.add(SCREEN_DIRS.left);
+    if (keys.has("d") || keys.has("arrowright")) keyMove.add(SCREEN_DIRS.right);
+
+    // Direct control (keyboard or joystick) takes over from any in-progress
+    // tap-to-move path. Keyboard is binary speed (Shift = run); the
+    // joystick's analog magnitude scales walk speed continuously, with full
+    // deflection crossing into a run — same RUN_SPEED either way.
+    let move: THREE.Vector3 | null = null;
+    let speed = WALK_SPEED;
+
+    if (keyMove.lengthSq() > 0) {
+      move = keyMove.normalize();
+      speed = shiftDown.current ? RUN_SPEED : WALK_SPEED;
+    } else {
+      const joy = joystickRef?.current;
+      if (joy) {
+        const magnitude = Math.min(1, Math.hypot(joy.x, joy.y));
+        if (magnitude > JOYSTICK_DEADZONE) {
+          move = new THREE.Vector3()
+            .addScaledVector(SCREEN_DIRS.right, joy.x)
+            .addScaledVector(SCREEN_DIRS.up, joy.y)
+            .normalize();
+          speed =
+            magnitude >= RUN_THRESHOLD
+              ? RUN_SPEED
+              : WALK_SPEED *
+                THREE.MathUtils.clamp(magnitude / RUN_THRESHOLD, 0.35, 1);
+        }
+      }
+    }
 
     let moving = false;
 
-    if (move.lengthSq() > 0) {
-      move.normalize().multiplyScalar(SPEED * delta);
+    if (move) {
+      path.current = null; // direct control cancels any in-progress path
+      move.multiplyScalar(speed * delta);
       moving = applyMove(position.current, move, tiles, gridOffset);
       if (moving) facing.current = Math.atan2(move.x, move.z);
     } else if (path.current) {
@@ -140,7 +205,7 @@ export const Player = forwardRef<PlayerHandle, PlayerProps>(function Player(
           const step = toTarget
             .clone()
             .normalize()
-            .multiplyScalar(Math.min(SPEED * delta, toTarget.length()));
+            .multiplyScalar(Math.min(WALK_SPEED * delta, toTarget.length()));
           applyMove(position.current, step, tiles, gridOffset);
           facing.current = Math.atan2(step.x, step.z);
           moving = true;

@@ -1,9 +1,11 @@
-import { GRID_SIZE, MAILBOX_POS, SIGNPOST_POS } from "./map";
+import { GRID_SIZE, MAILBOX_POS, REGION_ANCHORS, SIGNPOST_POS } from "./map";
+import { getRegion } from "@/content/regions";
 import type { PedestalPlacement, HobbyPlacement } from "./content-placement";
 
 const GRID_OFFSET = GRID_SIZE / 2;
 
-export type InteractableKind = "project" | "hobby" | "signpost" | "mailbox";
+export type InteractableKind =
+  "project" | "hobby" | "signpost" | "mailbox" | "building";
 
 export interface Interactable {
   id: string;
@@ -40,6 +42,21 @@ export function buildInteractables(
       label: h.hobby.title,
       worldX: h.x - GRID_OFFSET,
       worldZ: h.z - GRID_OFFSET,
+    });
+  }
+  // Buildings target their `entrance` tile, not the footprint centre — the
+  // footprint itself is unwalkable, which is exactly the "walks into the
+  // wall" bug this exists to fix. Park has no building/door, so it's not
+  // one of these; its hobby pedestals (above) are already individually
+  // walkable and clickable.
+  for (const anchor of REGION_ANCHORS) {
+    if (anchor.slug === "park") continue;
+    list.push({
+      id: `building:${anchor.slug}`,
+      kind: "building",
+      label: getRegion(anchor.slug).label,
+      worldX: anchor.entrance.x - GRID_OFFSET,
+      worldZ: anchor.entrance.z - GRID_OFFSET,
     });
   }
   list.push({
